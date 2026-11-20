@@ -1,0 +1,39 @@
+[workspace]
+members = ["crates/auth-core", "crates/auth-ffi"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.91"
+license = "MIT"
+repository = "https://github.com/linkmessengerme/auth-sdk"
+publish = false
+
+[workspace.dependencies]
+async-trait = "0.1.89"
+futures = "0.3.31"
+base64 = "0.22.1"
+chrono = { version = "0.4.42", default-features = false, features = ["std"] }
+getrandom = "0.3.4"
+openidconnect = { version = "4.0.1", default-features = false }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
+sha2 = "0.10.9"
+subtle = "2.6.1"
+thiserror = "2.0.17"
+url = "2.5.7"
+zeroize = "1.8.2"
+uniffi = { version = "=0.31.2", default-features = false }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+unwrap_used = "warn"
+expect_used = "warn"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "debuginfo"

@@ -1,0 +1,26 @@
+{
+  "type": "link_oauth_client_config",
+  "app_id": "f2d6be62-99c0-4a22-9114-000000000001",
+  "platform": "ios",
+  "client_id": "lk_client_sdk_test",
+  "issuer": "https://login.example.test",
+  "token_url": "https://login.example.test/oauth/v1/token",
+  "redirect_uris": [
+    "com.example.app://oauth/callback"
+  ],
+  "scopes": [
+    "openid",
+    "profile",
+    "offline_access",
+    "phone"
+  ],
+  "required_scopes": [
+    "openid"
+  ],
+  "scope_mode": "inherit",
+  "grant_types": [
+    "authorization_code",
+    "refresh_token"
+  ],
+  "pkce_method": "S256"
+}

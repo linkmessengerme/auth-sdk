@@ -1,0 +1,8 @@
+[bindings.kotlin]
+package_name = "me.linkmessenger.auth.generated"
+cdylib_name = "link_auth_ffi"
+
+[bindings.swift]
+module_name = "LinkAuthCore"
+ffi_module_name = "LinkAuthCoreFFI"
+generate_module_map = true

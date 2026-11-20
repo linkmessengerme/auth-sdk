@@ -1,0 +1,23 @@
+{
+  "jwks": {
+    "keys": [
+      {
+        "alg": "EdDSA",
+        "crv": "Ed25519",
+        "kid": "RdsIdO3CsMDzCjNZvzh9oqMmTgMASg3jgoAi8dXZLIQ",
+        "kty": "OKP",
+        "use": "sig",
+        "x": "GX9rI-FshTLGq8g4-s1ep4m-DHaykgM0A5v6iz02jWE"
+      }
+    ]
+  },
+  "nonce": "go-fixture-nonce",
+  "now": 1790000000,
+  "response": {
+    "access_token": "go-fixture-access-token",
+    "expires_in": 3600,
+    "id_token": "eyJhbGciOiJFZERTQSIsImtpZCI6IlJkc0lkTzNDc01EekNqTlp2emg5b3FNbVRnTUFTZzNqZ29BaThkWFpMSVEiLCJ0eXAiOiJKV1QifQ.eyJhdWQiOlsibGtfY2xpZW50X3Nka190ZXN0Il0sImF6cCI6ImxrX2NsaWVudF9zZGtfdGVzdCIsImV4cCI6MTc5MDAwMzYwMCwiaWF0IjoxNzkwMDAwMDAwLCJpc3MiOiJodHRwczovL2xvZ2luLmV4YW1wbGUudGVzdCIsIm5hbWUiOiJHbyBGaXh0dXJlIiwibm9uY2UiOiJnby1maXh0dXJlLW5vbmNlIiwicHJlZmVycmVkX3VzZXJuYW1lIjoiZ29fZml4dHVyZSIsInN1YiI6ImdvLXNpZ25lZC1wYWlyd2lzZS1zdWIifQ.20ObL3VsawwGawNAbqM-tMUkgHkQh1tWgTpO8KNrpL5Q4jdlxLUK-Z3H9B0ABz93nqQRrwKHG7sXMwgtOJxFCQ",
+    "scope": "openid profile",
+    "token_type": "Bearer"
+  }
+}

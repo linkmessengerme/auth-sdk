@@ -1,0 +1,27 @@
+[package]
+name = "link-auth-ffi"
+description = "UniFFI interface to the Link Login core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lib]
+name = "link_auth_ffi"
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/bin/uniffi-bindgen.rs"
+required-features = ["bindgen"]
+
+[features]
+bindgen = ["uniffi/cli", "uniffi/cargo-metadata"]
+
+[dependencies]
+link-auth-core = { path = "../auth-core" }
+async-trait.workspace = true
+thiserror.workspace = true
+uniffi.workspace = true

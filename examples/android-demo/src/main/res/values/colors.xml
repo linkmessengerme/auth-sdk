@@ -1,0 +1,9 @@
+<resources>
+    <color name="link_blue">#2765EF</color>
+    <color name="background">#F3F5F9</color>
+    <color name="text_primary">#18243B</color>
+    <color name="text_secondary">#57657E</color>
+    <color name="error">#AF293B</color>
+    <color name="white">#FFFFFF</color>
+    <color name="pale_blue">#E9F0FF</color>
+</resources>
