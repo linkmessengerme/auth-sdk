@@ -394,37 +394,9 @@ impl Attestation {
 
         // Upload. From here every failure deletes the key: its challenge is
         // spent and is part of the certificate.
-        let mut form = url::form_urlencoded::Serializer::new(String::new());
-        form.append_pair("client_id", self.config.client_id());
-        let complete = match &created.attestation {
-            KeyAttestation::Android { certificate_chain } => {
-                let chain = certificate_chain
-                    .iter()
-                    .map(|certificate| URL_SAFE_NO_PAD.encode(certificate))
-                    .collect::<Vec<_>>()
-                    .join(".");
-                form.append_pair("platform", "android")
-                    .append_pair("challenge", &challenge)
-                    .append_pair("certificate_chain", &chain);
-                !certificate_chain.is_empty()
-                    && certificate_chain.len() <= MAX_CERTIFICATES
-                    && certificate_chain.iter().all(|c| !c.is_empty())
-            }
-            KeyAttestation::Apple {
-                key_id,
-                attestation,
-            } => {
-                form.append_pair("platform", "ios")
-                    .append_pair("challenge", &challenge)
-                    .append_pair("apple_key_id", key_id)
-                    .append_pair("attestation", &URL_SAFE_NO_PAD.encode(attestation));
-                !key_id.is_empty() && !attestation.is_empty()
-            }
-        };
-        let body = form.finish().into_bytes();
+        let body = registration_body(self.config.client_id(), &challenge, &created.attestation);
         let timeout = remaining(deadline);
-        let (true, true, Some(timeout)) = (complete, body.len() <= MAX_REGISTRATION_BODY, timeout)
-        else {
+        let (Some(body), Some(timeout)) = (body, timeout) else {
             self.attestor.delete_key(&created.key_ref).await;
             return Ok(Registration::Stopped);
         };
@@ -487,6 +459,49 @@ impl Attestation {
             }
         }
     }
+}
+
+/// The form of the key upload, or `None` when the platform's answer cannot be
+/// sent as the contract describes it.
+fn registration_body(
+    client_id: &str,
+    challenge: &str,
+    attestation: &KeyAttestation,
+) -> Option<Vec<u8>> {
+    let mut form = url::form_urlencoded::Serializer::new(String::new());
+    form.append_pair("client_id", client_id);
+    match attestation {
+        KeyAttestation::Android { certificate_chain } => {
+            if certificate_chain.is_empty()
+                || certificate_chain.len() > MAX_CERTIFICATES
+                || certificate_chain.iter().any(Vec::is_empty)
+            {
+                return None;
+            }
+            let chain = certificate_chain
+                .iter()
+                .map(|certificate| URL_SAFE_NO_PAD.encode(certificate))
+                .collect::<Vec<_>>()
+                .join(".");
+            form.append_pair("platform", "android")
+                .append_pair("challenge", challenge)
+                .append_pair("certificate_chain", &chain);
+        }
+        KeyAttestation::Apple {
+            key_id,
+            attestation,
+        } => {
+            if key_id.is_empty() || attestation.is_empty() {
+                return None;
+            }
+            form.append_pair("platform", "ios")
+                .append_pair("challenge", challenge)
+                .append_pair("apple_key_id", key_id)
+                .append_pair("attestation", &URL_SAFE_NO_PAD.encode(attestation));
+        }
+    }
+    let body = form.finish().into_bytes();
+    (body.len() <= MAX_REGISTRATION_BODY).then_some(body)
 }
 
 fn unknown_client(reply: &http::Reply) -> Result<(), AuthError> {

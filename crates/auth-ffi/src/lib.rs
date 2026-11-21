@@ -32,9 +32,15 @@ pub enum ErrorCode {
     RandomUnavailable,
     InvalidClock,
     Internal,
-    Http { status: u16 },
-    OAuth { code: String },
+    Http {
+        status: u16,
+    },
+    OAuth {
+        code: String,
+    },
     InvalidNonce,
+    /// The application requires device attestation and this device did not pass.
+    AttestationRequired,
 }
 
 #[derive(Debug, thiserror::Error, uniffi::Error)]
@@ -75,6 +81,7 @@ impl From<core::AuthError> for AuthError {
             core::AuthError::InvalidClock => ErrorCode::InvalidClock,
             core::AuthError::Internal => ErrorCode::Internal,
             core::AuthError::InvalidNonce => ErrorCode::InvalidNonce,
+            core::AuthError::AttestationRequired => ErrorCode::AttestationRequired,
         };
         Self::Failure { code }
     }
@@ -150,6 +157,112 @@ impl core::SecureStore for StorageAdapter {
     }
 }
 
+#[derive(Debug, thiserror::Error, uniffi::Error)]
+pub enum AttestationFailure {
+    /// No key this time: unsupported device, a hardware or platform-service failure.
+    #[error("device attestation is unavailable")]
+    Unavailable,
+    /// The key no longer exists on the device.
+    #[error("the attested key no longer exists")]
+    KeyLost,
+}
+
+impl From<uniffi::UnexpectedUniFFICallbackError> for AttestationFailure {
+    fn from(_: uniffi::UnexpectedUniFFICallbackError) -> Self {
+        Self::Unavailable
+    }
+}
+
+#[derive(uniffi::Enum)]
+pub enum KeyAttestation {
+    /// DER certificates of the key, the key's own certificate first.
+    Android { certificate_chain: Vec<Vec<u8>> },
+    /// `keyId` as `generateKey` returned it and the object from `attestKey`.
+    Apple {
+        key_id: String,
+        attestation: Vec<u8>,
+    },
+}
+
+/// `key_ref` is how the platform finds the key again: a Keystore alias or an
+/// App Attest `keyId`.
+#[derive(uniffi::Record)]
+pub struct AttestedKey {
+    pub key_ref: String,
+    pub attestation: KeyAttestation,
+}
+
+/// Hardware-backed signing key of this installation. Use the supplied platform
+/// adapters. Private key material never crosses this interface.
+#[uniffi::export(with_foreign)]
+#[async_trait]
+pub trait DeviceAttestor: Send + Sync {
+    /// Cheap and local: false where the platform cannot attest at all.
+    fn is_available(&self) -> Result<bool, AttestationFailure>;
+    /// Create a sign-only P-256 key bound to the 32-byte challenge. `name` is a
+    /// namespace for platform aliases. Give up after `timeout_millis`.
+    async fn create_key(
+        &self,
+        name: String,
+        challenge: Vec<u8>,
+        timeout_millis: u32,
+    ) -> Result<AttestedKey, AttestationFailure>;
+    /// Android: SHA256withECDSA over `message`, DER. Apple: the assertion for
+    /// `clientDataHash = SHA-256(message)`.
+    async fn sign(&self, key_ref: String, message: Vec<u8>) -> Result<Vec<u8>, AttestationFailure>;
+    async fn delete_key(&self, key_ref: String) -> Result<(), AttestationFailure>;
+}
+
+struct AttestorAdapter(Arc<dyn DeviceAttestor>);
+
+impl From<AttestationFailure> for core::AttestorError {
+    fn from(failure: AttestationFailure) -> Self {
+        match failure {
+            AttestationFailure::Unavailable => Self::Unavailable,
+            AttestationFailure::KeyLost => Self::KeyLost,
+        }
+    }
+}
+
+#[async_trait]
+impl core::DeviceAttestor for AttestorAdapter {
+    fn is_available(&self) -> bool {
+        self.0.is_available().unwrap_or(false)
+    }
+    async fn create_key(
+        &self,
+        name: &str,
+        challenge: &[u8],
+        timeout_millis: u32,
+    ) -> Result<core::AttestedKey, core::AttestorError> {
+        let created = self
+            .0
+            .create_key(name.into(), challenge.to_vec(), timeout_millis)
+            .await?;
+        Ok(core::AttestedKey {
+            key_ref: created.key_ref,
+            attestation: match created.attestation {
+                KeyAttestation::Android { certificate_chain } => {
+                    core::KeyAttestation::Android { certificate_chain }
+                }
+                KeyAttestation::Apple {
+                    key_id,
+                    attestation,
+                } => core::KeyAttestation::Apple {
+                    key_id,
+                    attestation,
+                },
+            },
+        })
+    }
+    async fn sign(&self, key_ref: &str, message: &[u8]) -> Result<Vec<u8>, core::AttestorError> {
+        Ok(self.0.sign(key_ref.into(), message.to_vec()).await?)
+    }
+    async fn delete_key(&self, key_ref: &str) {
+        let _ = self.0.delete_key(key_ref.into()).await;
+    }
+}
+
 #[derive(uniffi::Enum)]
 pub enum SessionStatus {
     SignedOut,
@@ -197,6 +310,27 @@ impl LinkSessionClient {
                 Arc::new(TransportAdapter(transport)),
                 Arc::new(StorageAdapter(storage)),
             ),
+        }))
+    }
+
+    /// The same client with device attestation: token requests are signed by a
+    /// hardware key of this installation when the server asks for it.
+    #[uniffi::constructor]
+    pub fn with_attestation(
+        config_json: String,
+        redirect_uri: String,
+        transport: Arc<dyn HttpTransport>,
+        storage: Arc<dyn SecureStorage>,
+        attestor: Arc<dyn DeviceAttestor>,
+    ) -> Result<Arc<Self>, AuthError> {
+        let config = core::ClientConfig::from_console_json(&config_json, &redirect_uri)?;
+        Ok(Arc::new(Self {
+            inner: core::SessionClient::new(
+                config,
+                Arc::new(TransportAdapter(transport)),
+                Arc::new(StorageAdapter(storage)),
+            )
+            .with_device_attestor(Arc::new(AttestorAdapter(attestor))),
         }))
     }
 
@@ -411,6 +545,9 @@ pub struct UserIdentity {
     pub name: Option<String>,
     pub preferred_username: Option<String>,
     pub picture: Option<String>,
+    /// `verified`, `unlocked`, `mismatch` or `none`: the server's view of this
+    /// device. Absent while the application's device attestation is off.
+    pub device_trust: Option<String>,
 }
 
 impl From<core::UserIdentity> for UserIdentity {
@@ -422,6 +559,7 @@ impl From<core::UserIdentity> for UserIdentity {
             name: user.name,
             preferred_username: user.preferred_username,
             picture: user.picture,
+            device_trust: user.device_trust,
         }
     }
 }
@@ -458,15 +596,7 @@ pub struct SignInResult {
 #[uniffi::export]
 impl SignInResult {
     pub fn user(&self) -> UserIdentity {
-        let user = &self.inner.user;
-        UserIdentity {
-            issuer: user.issuer.clone(),
-            subject: user.subject.clone(),
-            granted_scopes: user.granted_scopes.clone(),
-            name: user.name.clone(),
-            preferred_username: user.preferred_username.clone(),
-            picture: user.picture.clone(),
-        }
+        self.inner.user.clone().into()
     }
     /// Copies a secret into native memory. Do not log it; use protected storage.
     pub fn access_token(&self) -> String {

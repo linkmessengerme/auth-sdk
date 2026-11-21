@@ -1825,6 +1825,19 @@ fn a_journal_written_by_the_previous_version_is_still_a_session() {
     });
 }
 
+/// Native bindings run these futures on multi-threaded executors.
+#[test]
+fn session_futures_are_send() {
+    fn assert_send<T: Send>(_: &T) {}
+    let f = Fx::new("report");
+    assert_send(&f.client.begin_sign_in(scopes()));
+    assert_send(&f.client.complete_sign_in(""));
+    assert_send(&f.client.refresh());
+    assert_send(&f.client.valid_session());
+    assert_send(&f.client.get_user_info());
+    assert_send(&f.client.logout());
+}
+
 // ---- ID token ------------------------------------------------------------
 
 #[test]

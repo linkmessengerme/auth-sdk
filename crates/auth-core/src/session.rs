@@ -550,20 +550,20 @@ impl SessionClient {
         )?;
         let mut resigned = false;
         let response = loop {
-            let mut form = url::form_urlencoded::Serializer::new(String::new());
-            form.append_pair("grant_type", "refresh_token")
-                .append_pair("client_id", self.config.client_id())
-                .append_pair("refresh_token", refresh.expose_secret());
-            if let Some(proof) = &proof {
-                proof.append(&mut form);
-            }
+            // The serializer is not Send: it must not live across an await.
+            let body = {
+                let mut form = url::form_urlencoded::Serializer::new(String::new());
+                form.append_pair("grant_type", "refresh_token")
+                    .append_pair("client_id", self.config.client_id())
+                    .append_pair("refresh_token", refresh.expose_secret());
+                if let Some(proof) = &proof {
+                    proof.append(&mut form);
+                }
+                form.finish().into_bytes()
+            };
             let response = http::token::<token::TokenResponse>(
                 self.transport.as_ref(),
-                HttpRequest::new(
-                    HttpMethod::Post,
-                    discovery.token_endpoint.clone(),
-                    form.finish().into_bytes(),
-                ),
+                HttpRequest::new(HttpMethod::Post, discovery.token_endpoint.clone(), body),
             )
             .await;
             // A refused proof spends nothing: sign once more, then give up.

@@ -368,21 +368,25 @@ impl AuthClient {
                 }
                 guard.check()?;
             }
-            let mut form = url::form_urlencoded::Serializer::new(String::new());
-            form.append_pair("grant_type", "authorization_code")
-                .append_pair("client_id", &self.config.client_id)
-                .append_pair("redirect_uri", &self.config.redirect_uri)
-                .append_pair("code", code.expose_secret())
-                .append_pair("code_verifier", pending.verifier.expose_secret());
-            if let Some(proof) = &proof {
-                proof.append(&mut form);
-            }
+            // The serializer is not Send: it must not live across an await.
+            let body = {
+                let mut form = url::form_urlencoded::Serializer::new(String::new());
+                form.append_pair("grant_type", "authorization_code")
+                    .append_pair("client_id", &self.config.client_id)
+                    .append_pair("redirect_uri", &self.config.redirect_uri)
+                    .append_pair("code", code.expose_secret())
+                    .append_pair("code_verifier", pending.verifier.expose_secret());
+                if let Some(proof) = &proof {
+                    proof.append(&mut form);
+                }
+                form.finish().into_bytes()
+            };
             let response = http::token::<token::TokenResponse>(
                 self.transport.as_ref(),
                 HttpRequest::new(
                     HttpMethod::Post,
                     pending.discovery.token_endpoint.clone(),
-                    form.finish().into_bytes(),
+                    body,
                 ),
             )
             .await;
