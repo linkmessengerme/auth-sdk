@@ -1,14 +1,35 @@
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use chrono::{DateTime, Utc};
 use openidconnect::{
-    core::{CoreIdToken, CoreIdTokenVerifier, CoreJsonWebKeySet, CoreJwsSigningAlgorithm},
-    AccessToken, AccessTokenHash, ClientId, IssuerUrl, Nonce,
+    core::{
+        CoreGenderClaim, CoreIdTokenVerifier, CoreJsonWebKeySet, CoreJweContentEncryptionAlgorithm,
+        CoreJwsSigningAlgorithm,
+    },
+    AccessToken, AccessTokenHash, AdditionalClaims, ClientId, IdToken, IssuerUrl, Nonce,
 };
 use serde::{Deserialize, Serialize};
 use subtle::ConstantTimeEq;
 use zeroize::Zeroize;
 
-use crate::{config::valid_scopes, AuthError, ClientConfig, SecretString};
+use crate::{attest::valid_level, config::valid_scopes, AuthError, ClientConfig, SecretString};
+
+/// Link's own ID token claims. Every other unknown claim is ignored.
+#[derive(Debug, Deserialize, Serialize)]
+struct LinkClaims {
+    // Read as any JSON value: a claim of an unexpected shape is "no level",
+    // never a reason to reject an otherwise valid token.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    device_trust: Option<serde_json::Value>,
+}
+
+impl AdditionalClaims for LinkClaims {}
+
+type LinkIdToken = IdToken<
+    LinkClaims,
+    CoreGenderClaim,
+    CoreJweContentEncryptionAlgorithm,
+    CoreJwsSigningAlgorithm,
+>;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UserIdentity {
@@ -19,6 +40,11 @@ pub struct UserIdentity {
     pub name: Option<String>,
     pub preferred_username: Option<String>,
     pub picture: Option<String>,
+    /// The server's view of this device when the token was issued: `verified`,
+    /// `unlocked`, `mismatch` or `none`. Absent while the application's device
+    /// attestation is off. Informational; enforcement is the server's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub device_trust: Option<String>,
 }
 
 #[derive(Debug)]
@@ -129,7 +155,7 @@ fn verify_context(
             Ok(())
         }
     });
-    let id: CoreIdToken = tokens
+    let id: LinkIdToken = tokens
         .id_token
         .parse()
         .map_err(|_| AuthError::InvalidIdToken)?;
@@ -204,6 +230,13 @@ fn verify_context(
                     .map(|value| value.as_str().to_owned())
             })
             .flatten(),
+        device_trust: claims
+            .additional_claims()
+            .device_trust
+            .as_ref()
+            .and_then(serde_json::Value::as_str)
+            .filter(|level| valid_level(level))
+            .map(str::to_owned),
     };
     let id_expires_at =
         u64::try_from(claims.expiration().timestamp()).map_err(|_| AuthError::InvalidIdToken)?;

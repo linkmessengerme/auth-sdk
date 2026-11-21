@@ -309,7 +309,9 @@ fn successful_login_uses_real_signature_and_actual_grants() {
             .requests
             .iter()
             .all(|r| r.url.starts_with(&format!("{ISSUER}/"))));
-        let request = &state.requests[1];
+        // Signing keys are fetched before the one-use code is sent.
+        assert!(state.requests[1].url.ends_with("/jwks.json"));
+        let request = &state.requests[2];
         let form: HashMap<String, String> = url::form_urlencoded::parse(&request.body)
             .into_owned()
             .collect();
@@ -633,8 +635,8 @@ fn regional_login_uses_only_configured_api_and_verifies_shared_issuer() {
                 urls,
                 vec![
                     format!("{REGIONAL_API}/.well-known/openid-configuration"),
-                    format!("{REGIONAL_API}/oauth/v1/token"),
                     format!("{REGIONAL_API}/oauth/v1/jwks.json"),
+                    format!("{REGIONAL_API}/oauth/v1/token"),
                 ]
             );
         }
@@ -866,7 +868,8 @@ fn token_network_failure_is_never_retried_and_requires_new_login() {
             client.complete_sign_in(&callback).await.unwrap_err(),
             AuthError::NoPendingLogin
         );
-        assert_eq!(server.state.lock().unwrap().requests.len(), 2);
+        // Discovery, signing keys, one token request.
+        assert_eq!(server.state.lock().unwrap().requests.len(), 3);
     });
 }
 

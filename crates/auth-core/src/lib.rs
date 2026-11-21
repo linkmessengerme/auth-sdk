@@ -1,5 +1,6 @@
 //! The Link Login protocol core. Platform integration is supplied by adapters.
 
+mod attest;
 mod client;
 mod config;
 mod error;
@@ -10,6 +11,7 @@ mod storage;
 mod token;
 mod userinfo;
 
+pub use attest::{AttestedKey, AttestorError, DeviceAttestor, KeyAttestation};
 pub use client::{AuthClient, AuthorizationRequest, Clock, SystemClock};
 pub use config::ClientConfig;
 pub use error::{AuthError, OAuthError};

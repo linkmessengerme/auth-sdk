@@ -12,8 +12,10 @@ use subtle::ConstantTimeEq;
 use url::Url;
 
 use crate::{
-    config::RESPONSE_PARAMETERS, http, token, AuthError, ClientConfig, HttpClient, HttpMethod,
-    HttpRequest, OAuthError, SecretString, SignInResult,
+    attest::{Advertised, AttestReason, Attestation, Endpoints, Purpose, Signing},
+    config::RESPONSE_PARAMETERS,
+    http, token, AuthError, ClientConfig, HttpClient, HttpMethod, HttpRequest, OAuthError,
+    SecretString, SignInResult,
 };
 
 const LOGIN_TTL_SECONDS: u64 = 600;
@@ -90,6 +92,13 @@ pub(crate) struct Pending {
     scopes: Vec<String>,
     discovery: Discovery,
     pub(crate) expires_at: u64,
+    /// Key registrations already made for this sign-in (at most two).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub(crate) attest_tries: u8,
+}
+
+fn is_zero(value: &u8) -> bool {
+    *value == 0
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -107,6 +116,18 @@ pub(crate) struct Discovery {
     code_challenge_methods_supported: Vec<String>,
     scopes_supported: Vec<String>,
     authorization_response_iss_parameter_supported: bool,
+    #[serde(
+        default,
+        deserialize_with = "Advertised::lenient",
+        skip_serializing_if = "Option::is_none"
+    )]
+    link_attestation: Option<Advertised>,
+}
+
+impl Pending {
+    pub(crate) fn discovery(&self) -> &Discovery {
+        &self.discovery
+    }
 }
 
 impl AuthClient {
@@ -123,6 +144,7 @@ impl AuthClient {
             scopes: pending.scopes.clone(),
             discovery: pending.discovery.clone(),
             expires_at: pending.expires_at,
+            attest_tries: pending.attest_tries,
         })
     }
 
@@ -229,7 +251,6 @@ impl AuthClient {
         let discovery = http::json::<Discovery>(
             self.transport.as_ref(),
             HttpRequest::new(HttpMethod::Get, self.config.discovery_url(), vec![]),
-            false,
         )
         .await;
         guard.check()?;
@@ -269,6 +290,7 @@ impl AuthClient {
                 scopes,
                 discovery,
                 expires_at,
+                attest_tries: 0,
             }));
         }
         Ok(result)
@@ -278,6 +300,18 @@ impl AuthClient {
     /// legitimate pending attempt intact. Network failures after consumption
     /// require a new login; this method never retries an authorization code.
     pub async fn complete_sign_in(&self, callback_url: &str) -> Result<SignInResult, AuthError> {
+        self.complete_sign_in_attested(callback_url, None)
+            .await
+            .map(|(result, _)| result)
+    }
+
+    /// Also returns the `key_id` whose proof the accepted exchange carried. The
+    /// code is sent again only after a refusal the server makes before spending it.
+    pub(crate) async fn complete_sign_in_attested(
+        &self,
+        callback_url: &str,
+        attestation: Option<&Attestation>,
+    ) -> Result<(SignInResult, Option<String>), AuthError> {
         let (pending, code) = {
             let mut current = self.state.lock().map_err(|_| AuthError::Internal)?;
             let pending = match &*current {
@@ -308,48 +342,113 @@ impl AuthClient {
             (pending, code)
         };
         let guard = OperationGuard::new(self.state.clone(), pending.id.clone());
-        let body = url::form_urlencoded::Serializer::new(String::new())
-            .append_pair("grant_type", "authorization_code")
-            .append_pair("client_id", &self.config.client_id)
-            .append_pair("redirect_uri", &self.config.redirect_uri)
-            .append_pair("code", code.expose_secret())
-            .append_pair("code_verifier", pending.verifier.expose_secret())
-            .finish()
-            .into_bytes();
-        let tokens = http::json::<token::TokenResponse>(
-            self.transport.as_ref(),
-            HttpRequest::new(
-                HttpMethod::Post,
-                pending.discovery.token_endpoint.clone(),
-                body,
-            ),
-            true,
-        )
-        .await;
-        guard.check()?;
-        let tokens = tokens?;
-        tokens.validate(&self.config, &pending.scopes)?;
+        // Signing keys first: a failure here has not spent the code, and tokens
+        // the server has issued are never lost to a second request.
         let jwks = http::json::<serde_json::Value>(
             self.transport.as_ref(),
             HttpRequest::new(HttpMethod::Get, pending.discovery.jwks_uri.clone(), vec![]),
-            false,
         )
         .await;
         guard.check()?;
+        let jwks = jwks?;
+        let attested = attestation.zip(pending.discovery.attestation(&self.config));
+        let mut key = attested.as_ref().and_then(|(attest, _)| attest.load());
+        let mut tries = pending.attest_tries;
+        let mut registered = false;
+        let (tokens, key_id) = loop {
+            let mut proof = None;
+            if let (Some((attest, _)), Some(saved)) = (&attested, &key) {
+                match attest
+                    .sign(saved, Purpose::Code, code.expose_secret(), 0)
+                    .await
+                {
+                    Signing::Signed(value) => proof = Some(value),
+                    Signing::NoKey => key = None,
+                    Signing::Unavailable => (),
+                }
+                guard.check()?;
+            }
+            let mut form = url::form_urlencoded::Serializer::new(String::new());
+            form.append_pair("grant_type", "authorization_code")
+                .append_pair("client_id", &self.config.client_id)
+                .append_pair("redirect_uri", &self.config.redirect_uri)
+                .append_pair("code", code.expose_secret())
+                .append_pair("code_verifier", pending.verifier.expose_secret());
+            if let Some(proof) = &proof {
+                proof.append(&mut form);
+            }
+            let response = http::token::<token::TokenResponse>(
+                self.transport.as_ref(),
+                HttpRequest::new(
+                    HttpMethod::Post,
+                    pending.discovery.token_endpoint.clone(),
+                    form.finish().into_bytes(),
+                ),
+            )
+            .await;
+            guard.check()?;
+            let failure = match response {
+                Ok(tokens) => break (tokens, proof.map(|proof| proof.key_id)),
+                Err(failure) => failure,
+            };
+            // Attestation refusals are made before the code is consumed.
+            match (failure.reason, &attested) {
+                (Some(AttestReason::Required), Some((attest, endpoints)))
+                    if proof.is_none() && !registered =>
+                {
+                    registered = true;
+                    key = attest.ensure(endpoints, &mut tries, false).await?;
+                    guard.check()?;
+                    if key.is_none() {
+                        return Err(AuthError::AttestationRequired);
+                    }
+                }
+                (Some(AttestReason::Required), _) => return Err(AuthError::AttestationRequired),
+                (Some(AttestReason::KeyUnknown), Some((attest, endpoints))) if !registered => {
+                    registered = true;
+                    if let Some(saved) = key.take() {
+                        attest.forget(&saved).await;
+                    }
+                    key = attest.ensure(endpoints, &mut tries, false).await?;
+                    guard.check()?;
+                }
+                (Some(reason), Some((attest, _))) => {
+                    // The saved key is useless to the server: the next sign-in
+                    // registers a new one.
+                    if matches!(
+                        reason,
+                        AttestReason::KeyUnknown
+                            | AttestReason::KeyRevoked
+                            | AttestReason::ProofInvalid
+                    ) {
+                        if let Some(saved) = key.take() {
+                            attest.forget(&saved).await;
+                        }
+                    }
+                    return Err(if reason == AttestReason::KeyRevoked {
+                        AuthError::ReauthenticationRequired
+                    } else {
+                        failure.error
+                    });
+                }
+                _ => return Err(failure.error),
+            }
+        };
+        tokens.validate(&self.config, &pending.scopes)?;
         let now = self.clock.unix_time_seconds()?;
         if now >= pending.expires_at {
             return Err(AuthError::Expired);
         }
         let result = token::verify(
             tokens,
-            jwks?,
+            jwks,
             &self.config,
             pending.nonce.expose_secret(),
             now,
         )?;
         // Linearization point: cancellation before this point invalidates the result.
         guard.finish()?;
-        Ok(result)
+        Ok((result, key_id))
     }
 
     /// Invalidate the current operation, including an in-flight HTTP exchange.
@@ -369,11 +468,15 @@ impl Discovery {
         let doc: Self = http::json(
             transport,
             HttpRequest::new(HttpMethod::Get, config.discovery_url(), vec![]),
-            false,
         )
         .await?;
         doc.validate(config, &["openid".into()])?;
         Ok(doc)
+    }
+
+    /// Attestation endpoints, when the server advertises version 1 of them.
+    pub(crate) fn attestation(&self, config: &ClientConfig) -> Option<Endpoints> {
+        self.link_attestation.as_ref()?.endpoints(config)
     }
 
     fn validate(&self, config: &ClientConfig, requested: &[String]) -> Result<(), AuthError> {

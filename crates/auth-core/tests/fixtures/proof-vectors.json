@@ -1,0 +1,184 @@
+{
+  "description": "Проверочные данные подписи запросов токена, договор CONTRACT.md версии 1. Ключ проверочный.",
+  "prefix": "link-login-attest-v1",
+  "key": {
+    "private_scalar_hex": "3a0fc96a96353de3a3cd958cceeb94f66e037dbf2e97385994037117f40ea1da",
+    "public_spki_der_base64": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEN3LzCEQ1jPBcEo06VJq5pCRPVPemDiUbMLtlbEdLiSMYO/s4C2+LryaBhO8G0ek7Ma10WmzHMqZz+4vI+nsncg==",
+    "public_point_hex": "043772f30844358cf05c128d3a549ab9a4244f54f7a60e251b30bb656c474b8923183bfb380b6f8baf268184ef06d1e93b31ad745a6cc732a673fb8bc8fa7b2772"
+  },
+  "ios": {
+    "app_id": "ABCDE12345.com.example.app",
+    "rp_id_hash_hex": "78fac4e89cefcde20ecc77ec10d0db108e4ec3348b0c8cbafdf92cb4583f9882"
+  },
+  "valid": [
+    {
+      "name": "code",
+      "purpose": "code",
+      "client_id": "lk_client_sdk_test",
+      "key_id": "ak_Zm9yLXRlc3RzLW9ubHktMDE",
+      "secret": "kq3v0oJ0v2yXoN1c7m8pQw4r5t6u7i8o9p0aSdFgHjK",
+      "attempt": 0,
+      "secret_hash": "XxyD_JmNx3ORdvrnKkBa8pSX7s6LBku7DNHf-rnvQ8A",
+      "message_utf8": "link-login-attest-v1\ncode\nlk_client_sdk_test\nak_Zm9yLXRlc3RzLW9ubHktMDE\nXxyD_JmNx3ORdvrnKkBa8pSX7s6LBku7DNHf-rnvQ8A\n0",
+      "message_hex": "6c696e6b2d6c6f67696e2d6174746573742d76310a636f64650a6c6b5f636c69656e745f73646b5f746573740a616b5f5a6d39794c58526c6333527a4c57397562486b744d44450a587879445f4a6d4e78334f526476726e4b6b4261387053583773364c426b7537444e48662d726e765138410a30",
+      "client_data_hash_hex": "3f1b7e9c4199d0ab71d4b7be37ec1cde21728943943de907da2edda4b21d2df1",
+      "android_proof": "MEUCIEX3-UJkGpq-ubL3AqHvLqvPuASPkswAZcnqZ8yZPIHBAiEA-41CP3vKKS203-uW_F2yOnJHcRz2alHNddY6MXHEv8c",
+      "ios_counter": 1,
+      "ios_proof": "omlzaWduYXR1cmVYSDBGAiEAkh8Ybj7x221w8ezRBT1LlX6xjpcKyUshy1JhuT_2-yICIQCMIo2mRUxOmUNvu3h8fj-RaSJ8bfGjDF2hXmfpl-dWdXFhdXRoZW50aWNhdG9yRGF0YVglePrE6JzvzeIOzHfsENDbEI5OwzSLDIy6_fkstFg_mIJAAAAAAQ",
+      "expect": "valid"
+    },
+    {
+      "name": "refresh",
+      "purpose": "refresh",
+      "client_id": "lk_client_sdk_test",
+      "key_id": "ak_Zm9yLXRlc3RzLW9ubHktMDE",
+      "secret": "Zx9cV8bN7mQ6wE5rT4yU3iO2pA1sD0fGhJkLzXcVbNm",
+      "attempt": 0,
+      "secret_hash": "7CRmxbDRO3kmKNzYJ3N2YkHUVnBKf70_GU_eq6yxi8c",
+      "message_utf8": "link-login-attest-v1\nrefresh\nlk_client_sdk_test\nak_Zm9yLXRlc3RzLW9ubHktMDE\n7CRmxbDRO3kmKNzYJ3N2YkHUVnBKf70_GU_eq6yxi8c\n0",
+      "message_hex": "6c696e6b2d6c6f67696e2d6174746573742d76310a726566726573680a6c6b5f636c69656e745f73646b5f746573740a616b5f5a6d39794c58526c6333527a4c57397562486b744d44450a3743526d786244524f336b6d4b4e7a594a334e32596b4855566e424b6637305f47555f65713679786938630a30",
+      "client_data_hash_hex": "755316cec0c502a07a8606fe97b766e7fd3a95b20da0a8779a985f57b6aff357",
+      "android_proof": "MEUCIBqYUavp6KmzyyRrm-RVRC4GwNy6q6LpwMx3Oe68LwYzAiEAhNXirP1x2jK1us2AsZGq0AvsQzifSJRyWvB95LJn2II",
+      "ios_counter": 2,
+      "ios_proof": "omlzaWduYXR1cmVYSDBGAiEAkMIl4B2yfp7LwvhxwXJRVooaQ194HNLv4j8ySTyt6xYCIQDsl5oJuD1W_BNA_P2wQHG7IiGsYI3AuBFjj86NkPmplHFhdXRoZW50aWNhdG9yRGF0YVglePrE6JzvzeIOzHfsENDbEI5OwzSLDIy6_fkstFg_mIJAAAAAAg",
+      "expect": "valid"
+    },
+    {
+      "name": "refresh-retry-1",
+      "purpose": "refresh",
+      "client_id": "lk_client_sdk_test",
+      "key_id": "ak_Zm9yLXRlc3RzLW9ubHktMDE",
+      "secret": "Zx9cV8bN7mQ6wE5rT4yU3iO2pA1sD0fGhJkLzXcVbNm",
+      "attempt": 1,
+      "secret_hash": "7CRmxbDRO3kmKNzYJ3N2YkHUVnBKf70_GU_eq6yxi8c",
+      "message_utf8": "link-login-attest-v1\nrefresh\nlk_client_sdk_test\nak_Zm9yLXRlc3RzLW9ubHktMDE\n7CRmxbDRO3kmKNzYJ3N2YkHUVnBKf70_GU_eq6yxi8c\n1",
+      "message_hex": "6c696e6b2d6c6f67696e2d6174746573742d76310a726566726573680a6c6b5f636c69656e745f73646b5f746573740a616b5f5a6d39794c58526c6333527a4c57397562486b744d44450a3743526d786244524f336b6d4b4e7a594a334e32596b4855566e424b6637305f47555f65713679786938630a31",
+      "client_data_hash_hex": "316806715b1764df6fd3d9ca91e808562b6b3ea8795b26d9b0b2a2dad3089475",
+      "android_proof": "MEYCIQDubuIj2mwaysVAwJ_CooUsHyThzoPI1gwr6lHu_uaDSgIhAKeG6cxsHUMuzxizKe5h0YntW7j8LAhvW2vqJJDvroJA",
+      "ios_counter": 3,
+      "ios_proof": "omlzaWduYXR1cmVYRzBFAiBIZtPiTSpNE7ad-66LGEmC7I-ot5ht_j3R9dzHdDJE2QIhAOfQycO_T5bSssDdbcczRyIEoMWUL5-y6kmOO3zQAawecWF1dGhlbnRpY2F0b3JEYXRhWCV4-sTonO_N4g7Md-wQ0NsQjk7DNIsMjLr9-Sy0WD-YgkAAAAAD",
+      "expect": "valid"
+    }
+  ],
+  "valid_alternative": [
+    {
+      "name": "ios-digest-form",
+      "why": "iOS: подпись над nonce как над готовым хешем — тоже принимается (см. CONTRACT.md 4.3)",
+      "purpose": "refresh",
+      "client_id": "lk_client_sdk_test",
+      "key_id": "ak_Zm9yLXRlc3RzLW9ubHktMDE",
+      "secret": "Zx9cV8bN7mQ6wE5rT4yU3iO2pA1sD0fGhJkLzXcVbNm",
+      "attempt": 0,
+      "ios_proof": "omlzaWduYXR1cmVYRzBFAiAhGPGTc4G7oCwjNhACMUuwZSEQu-fDrN11xwXk3ozBYQIhAK1nPdAn4QiuF9eOUKxyXItdyMOidiKQSkbuKD5JIfitcWF1dGhlbnRpY2F0b3JEYXRhWCV4-sTonO_N4g7Md-wQ0NsQjk7DNIsMjLr9-Sy0WD-YgkAAAAAC",
+      "expect": "valid"
+    }
+  ],
+  "invalid": [
+    {
+      "name": "other-purpose",
+      "why": "подпись для refresh предъявлена как code",
+      "purpose": "code",
+      "client_id": "lk_client_sdk_test",
+      "key_id": "ak_Zm9yLXRlc3RzLW9ubHktMDE",
+      "secret": "Zx9cV8bN7mQ6wE5rT4yU3iO2pA1sD0fGhJkLzXcVbNm",
+      "attempt": 0,
+      "android_proof": "MEUCIBqYUavp6KmzyyRrm-RVRC4GwNy6q6LpwMx3Oe68LwYzAiEAhNXirP1x2jK1us2AsZGq0AvsQzifSJRyWvB95LJn2II",
+      "ios_proof": "omlzaWduYXR1cmVYSDBGAiEAkMIl4B2yfp7LwvhxwXJRVooaQ194HNLv4j8ySTyt6xYCIQDsl5oJuD1W_BNA_P2wQHG7IiGsYI3AuBFjj86NkPmplHFhdXRoZW50aWNhdG9yRGF0YVglePrE6JzvzeIOzHfsENDbEI5OwzSLDIy6_fkstFg_mIJAAAAAAg",
+      "expect": "proof_invalid"
+    },
+    {
+      "name": "other-attempt",
+      "why": "подпись попытки 0 предъявлена как попытка 1",
+      "purpose": "refresh",
+      "client_id": "lk_client_sdk_test",
+      "key_id": "ak_Zm9yLXRlc3RzLW9ubHktMDE",
+      "secret": "Zx9cV8bN7mQ6wE5rT4yU3iO2pA1sD0fGhJkLzXcVbNm",
+      "attempt": 1,
+      "android_proof": "MEUCIBqYUavp6KmzyyRrm-RVRC4GwNy6q6LpwMx3Oe68LwYzAiEAhNXirP1x2jK1us2AsZGq0AvsQzifSJRyWvB95LJn2II",
+      "ios_proof": "omlzaWduYXR1cmVYSDBGAiEAkMIl4B2yfp7LwvhxwXJRVooaQ194HNLv4j8ySTyt6xYCIQDsl5oJuD1W_BNA_P2wQHG7IiGsYI3AuBFjj86NkPmplHFhdXRoZW50aWNhdG9yRGF0YVglePrE6JzvzeIOzHfsENDbEI5OwzSLDIy6_fkstFg_mIJAAAAAAg",
+      "expect": "proof_invalid"
+    },
+    {
+      "name": "other-secret",
+      "why": "подпись сделана над другим токеном",
+      "purpose": "refresh",
+      "client_id": "lk_client_sdk_test",
+      "key_id": "ak_Zm9yLXRlc3RzLW9ubHktMDE",
+      "secret": "kq3v0oJ0v2yXoN1c7m8pQw4r5t6u7i8o9p0aSdFgHjK",
+      "attempt": 0,
+      "android_proof": "MEUCIBqYUavp6KmzyyRrm-RVRC4GwNy6q6LpwMx3Oe68LwYzAiEAhNXirP1x2jK1us2AsZGq0AvsQzifSJRyWvB95LJn2II",
+      "ios_proof": "omlzaWduYXR1cmVYSDBGAiEAkMIl4B2yfp7LwvhxwXJRVooaQ194HNLv4j8ySTyt6xYCIQDsl5oJuD1W_BNA_P2wQHG7IiGsYI3AuBFjj86NkPmplHFhdXRoZW50aWNhdG9yRGF0YVglePrE6JzvzeIOzHfsENDbEI5OwzSLDIy6_fkstFg_mIJAAAAAAg",
+      "expect": "proof_invalid"
+    },
+    {
+      "name": "other-client",
+      "why": "подпись сделана для другого client_id",
+      "purpose": "refresh",
+      "client_id": "lk_client_other",
+      "key_id": "ak_Zm9yLXRlc3RzLW9ubHktMDE",
+      "secret": "Zx9cV8bN7mQ6wE5rT4yU3iO2pA1sD0fGhJkLzXcVbNm",
+      "attempt": 0,
+      "android_proof": "MEUCIBqYUavp6KmzyyRrm-RVRC4GwNy6q6LpwMx3Oe68LwYzAiEAhNXirP1x2jK1us2AsZGq0AvsQzifSJRyWvB95LJn2II",
+      "ios_proof": "omlzaWduYXR1cmVYSDBGAiEAkMIl4B2yfp7LwvhxwXJRVooaQ194HNLv4j8ySTyt6xYCIQDsl5oJuD1W_BNA_P2wQHG7IiGsYI3AuBFjj86NkPmplHFhdXRoZW50aWNhdG9yRGF0YVglePrE6JzvzeIOzHfsENDbEI5OwzSLDIy6_fkstFg_mIJAAAAAAg",
+      "expect": "proof_invalid"
+    },
+    {
+      "name": "other-key-id",
+      "why": "подпись сделана для другого key_id",
+      "purpose": "refresh",
+      "client_id": "lk_client_sdk_test",
+      "key_id": "ak_b3RoZXIta2V5LWlkLTAwMDE",
+      "secret": "Zx9cV8bN7mQ6wE5rT4yU3iO2pA1sD0fGhJkLzXcVbNm",
+      "attempt": 0,
+      "android_proof": "MEUCIBqYUavp6KmzyyRrm-RVRC4GwNy6q6LpwMx3Oe68LwYzAiEAhNXirP1x2jK1us2AsZGq0AvsQzifSJRyWvB95LJn2II",
+      "ios_proof": "omlzaWduYXR1cmVYSDBGAiEAkMIl4B2yfp7LwvhxwXJRVooaQ194HNLv4j8ySTyt6xYCIQDsl5oJuD1W_BNA_P2wQHG7IiGsYI3AuBFjj86NkPmplHFhdXRoZW50aWNhdG9yRGF0YVglePrE6JzvzeIOzHfsENDbEI5OwzSLDIy6_fkstFg_mIJAAAAAAg",
+      "expect": "proof_invalid"
+    },
+    {
+      "name": "other-key",
+      "why": "подписано другим ключом",
+      "purpose": "refresh",
+      "client_id": "lk_client_sdk_test",
+      "key_id": "ak_Zm9yLXRlc3RzLW9ubHktMDE",
+      "secret": "Zx9cV8bN7mQ6wE5rT4yU3iO2pA1sD0fGhJkLzXcVbNm",
+      "attempt": 0,
+      "android_proof": "MEQCIF2hblcH6ehc9XQgm3LMH0PEj8B2wRzTVxYFNiidQaS8AiAZKS5smi58pcqufNby-cRhuZPF_4Y7bU_E9e2JDffqXA",
+      "ios_proof": "omlzaWduYXR1cmVYRzBFAiEAgK0nbM3voh24zwSkVbCXza6iunI5IEqD2OZkIRetaBMCIE97JT56794HqqQOD3cXEn_MSJSGpp1F6lBcFqithJ18cWF1dGhlbnRpY2F0b3JEYXRhWCV4-sTonO_N4g7Md-wQ0NsQjk7DNIsMjLr9-Sy0WD-YgkAAAAAC",
+      "expect": "proof_invalid"
+    },
+    {
+      "name": "ios-other-app",
+      "why": "iOS: утверждение для другого App ID (rpIdHash не тот)",
+      "purpose": "refresh",
+      "client_id": "lk_client_sdk_test",
+      "key_id": "ak_Zm9yLXRlc3RzLW9ubHktMDE",
+      "secret": "Zx9cV8bN7mQ6wE5rT4yU3iO2pA1sD0fGhJkLzXcVbNm",
+      "attempt": 0,
+      "ios_proof": "omlzaWduYXR1cmVYSDBGAiEAp_ZJWlkBAwaDceJ4P-V9HiFA22hBfYtuVreetk3yKa0CIQCSAUzRIe3DpM3VBwk2Qlo3Z8g0mqEPFTmauW21FC8KzXFhdXRoZW50aWNhdG9yRGF0YVglgQZbuwjIJZrSeg0bmvGf15G4pAfchgOJ_soLF4FbMkNAAAAAAg",
+      "expect": "proof_invalid"
+    },
+    {
+      "name": "ios-counter-zero",
+      "why": "iOS: счётчик 0 — это данные аттестации, а не утверждение",
+      "purpose": "refresh",
+      "client_id": "lk_client_sdk_test",
+      "key_id": "ak_Zm9yLXRlc3RzLW9ubHktMDE",
+      "secret": "Zx9cV8bN7mQ6wE5rT4yU3iO2pA1sD0fGhJkLzXcVbNm",
+      "attempt": 0,
+      "ios_proof": "omlzaWduYXR1cmVYRzBFAiEAmFNSaIQDFnAXZCI__1LH2V0Xf2qpelNpvhMgyjN7_ogCIAq7Pw6K-4KaSyNQcLjR-4jGWizmIpsZzv7fQNyId_VEcWF1dGhlbnRpY2F0b3JEYXRhWCV4-sTonO_N4g7Md-wQ0NsQjk7DNIsMjLr9-Sy0WD-YgkAAAAAA",
+      "expect": "proof_invalid"
+    },
+    {
+      "name": "truncated",
+      "why": "обрезанная подпись",
+      "purpose": "refresh",
+      "client_id": "lk_client_sdk_test",
+      "key_id": "ak_Zm9yLXRlc3RzLW9ubHktMDE",
+      "secret": "Zx9cV8bN7mQ6wE5rT4yU3iO2pA1sD0fGhJkLzXcVbNm",
+      "attempt": 0,
+      "android_proof": "MEUCIBqYUavp6KmzyyRrm-RVRC4GwNy6q6LpwMx3Oe68LwYzAiEAhNXirP1x2jK1us2AsZGq0AvsQzifSJRyWvB95LJ",
+      "ios_proof": "omlzaWduYXR1cmVYSDBGAiEAkMIl4B2yfp7LwvhxwXJRVooaQ194HNLv4j8ySTyt6xYCIQDsl5oJuD1W_BNA_P2wQHG7IiGsYI3AuBFjj86NkPmplHFhdXRoZW50aWNhdG9yRGF0YVglePrE6JzvzeIOzHfsENDbEI5OwzSLDIy6_fkstFg_mIJAAA",
+      "expect": "proof_invalid"
+    }
+  ]
+}

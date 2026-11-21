@@ -1059,6 +1059,7 @@ dependencies = [
  "futures",
  "getrandom 0.3.4",
  "openidconnect",
+ "p256",
  "serde",
  "serde_json",
  "sha2",
