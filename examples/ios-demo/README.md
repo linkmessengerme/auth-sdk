@@ -38,6 +38,14 @@ let auth = try await LinkAuth.create(
 )
 ```
 
+## Device attestation
+
+To see `deviceTrust == "verified"` on a device, add the **App Attest** capability to
+the `LinkAuthDemo` target under Signing & Capabilities and enter your Team ID for the
+application in Console; a build from Xcode is a development build, so also turn on
+"accept development builds" there. Without the capability the demo still signs in and
+the device counts as not attested. The simulator never attests.
+
 ## Build
 
 Requires Xcode with Swift 6 and a built local Apple package. From the repository root:

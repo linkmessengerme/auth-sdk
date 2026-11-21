@@ -32,4 +32,4 @@ android {
         proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
     }
 }
-dependencies { implementation("me.linkmessenger:link-auth:0.1.0") }
+dependencies { implementation("me.linkmessenger:link-auth:0.2.0") }

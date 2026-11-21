@@ -6,6 +6,42 @@ URLSession and Keychain adapters, and the manifest used for local development.
 To **use** the SDK in an app, add the published package and follow its guide:
 [`auth-sdk-swift`](https://github.com/linkmessengerme/auth-sdk-swift).
 
+## Device attestation (App Attest)
+
+The SDK creates an App Attest key in the Secure Enclave, has Apple attest it once at
+the first sign-in, and signs the code exchange and every token refresh with it.
+Nothing needs to be called in code, but two things must be set up:
+
+1. **Add the App Attest capability** to the app target in Xcode (Signing &
+   Capabilities → + Capability → App Attest). It adds the entitlement
+   `com.apple.developer.devicecheck.appattest-environment`. Xcode sets it to
+   `development`; builds distributed through TestFlight and the App Store use
+   `production`. Without the capability the key cannot be attested and the device
+   counts as not attested.
+2. **Enter your Team ID in Link Console** for the application (10 characters, shown in
+   your Apple Developer account under Membership). Link compares the attestation with
+   `TeamID.bundleID`. Development builds are accepted only when "accept development
+   builds" is on for the application in Console.
+
+- App Attest needs iOS 14 and a real device. On iOS 13, in the simulator, in an app
+  extension, without the capability or when Apple's servers cannot be reached there is
+  no key: the sign-in goes on and the server decides according to the mode you chose in
+  Console (Off, Report only, Required).
+- The key is attested only at the first sign-in, never at app launch, and is reused
+  until the app is uninstalled; it survives sign-out.
+- `session.user.deviceTrust` is `"verified"`, `"mismatch"`, `"none"`, or `nil` while
+  the mode is Off.
+- `ErrorCode.attestationRequired`: the mode is Required and this device did not pass.
+- To turn attestation off in the SDK:
+
+```swift
+let auth = try await LinkAuth.create(configJson: configJson, redirectUri: redirectUri,
+                                     attestation: false)
+```
+
+With attestation, a token refresh whose answer was lost in the network is repeated on
+the next call instead of ending the session.
+
 ## Building from source
 
 From the repository root, with Rust 1.91+, Xcode and the iOS targets installed:
@@ -30,9 +66,9 @@ link the `LinkAuth` product.
   can consume the package; `examples/apple-package-check` verifies exactly that,
   including real linking of the Rust static library.
 - The Intel simulator slice is not built.
-- Host builds and smoke checks do not cover entitlements, the system hand-off to Link,
-  Keychain lock state, backups or process death. Test those on a device with the
-  [iOS demo](../../examples/ios-demo/README.md).
+- Host builds and smoke checks do not cover entitlements, App Attest, the system
+  hand-off to Link, Keychain lock state, backups or process death. Test those on a
+  device with the [iOS demo](../../examples/ios-demo/README.md).
 
 ## License
 

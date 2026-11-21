@@ -113,7 +113,9 @@ class MainActivity : ComponentActivity() {
             profileDetails.text = getString(R.string.profile_details, user.subject,
                 user.grantedScopes.joinToString(" · "),
                 DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.MEDIUM)
-                    .format(Date(session.expiresAt.toLong() * 1000)))
+                    .format(Date(session.expiresAt.toLong() * 1000)),
+                // device_trust of the ID token; absent while attestation is off in Console.
+                user.deviceTrust ?: getString(R.string.device_trust_absent))
         }
         checkSession.isEnabled = !state.busy && state.session != null
         refreshSession.isEnabled = !state.busy && state.session?.canRefresh == true

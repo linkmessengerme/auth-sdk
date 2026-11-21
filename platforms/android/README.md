@@ -37,7 +37,7 @@ android {
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
     }
 }
-dependencies { implementation("me.linkmessenger:link-auth:0.1.0") }
+dependencies { implementation("me.linkmessenger:link-auth:0.2.0") }
 ```
 
 Limit your app to these ABIs or a subset: JNA ships additional legacy ABIs for which
@@ -122,6 +122,36 @@ result has `subject` and the optional `name`, `preferredUsername`, `picture`,
 sign-in; `phoneNumber` is then `null`. Data is read again on every call and is not
 stored by the SDK. Do not log it.
 
+## Device attestation
+
+The SDK creates a signing key in the AndroidKeyStore and proves to Link, with the
+key's certificate chain, that it was created by your app on a real device. The code
+exchange and every token refresh are then signed by this key. Nothing needs to be
+called and no permission or manifest entry is needed.
+
+- The key is EC P-256, sign-only, created in StrongBox when the device has one and in
+  the TEE otherwise. No device identifiers are requested and no user confirmation is
+  shown. It is created once, before Link is opened for the first sign-in, and is
+  reused until the app is uninstalled; it survives sign-out.
+- Key attestation needs Android 7 (API 24). On Android 6, or when the Keystore fails,
+  there is no key: the sign-in goes on and the server decides according to the mode
+  you chose in Console (Off, Report only, Required).
+- In Console, the SHA-256 fingerprint must be that of the key your **installed** app
+  is signed with. With Play App Signing that is the app signing key from Play Console,
+  not your upload key. A wrong fingerprint shows up as `deviceTrust == "mismatch"`;
+  check it in Report only mode before you switch to Required.
+- `session.user.deviceTrust` is `"verified"`, `"unlocked"` (unlocked bootloader),
+  `"mismatch"`, `"none"`, or `null` while the mode is Off.
+- `ErrorCode.AttestationRequired`: the mode is Required and this device did not pass.
+- To turn attestation off in the SDK:
+
+```kotlin
+val auth = LinkAuth.create(applicationContext, configJson, redirectUri, attestation = false)
+```
+
+With attestation, a token refresh whose answer was lost in the network is repeated on
+the next call instead of ending the session.
+
 ## Sign-in with your own backend
 
 Your backend first creates and stores a one-time challenge with a cryptographically
@@ -152,12 +182,15 @@ new sign-in. End an existing session deliberately before signing in again.
   consent is `ErrorCode.AuthorizationDenied`, an explicit cancel `ErrorCode.Cancelled`,
   a timeout `ErrorCode.Expired`. `CannotOpenLink` and `Closed` are separate exceptions.
   Always rethrow `CancellationException`.
+- `ErrorCode.AttestationRequired` means the application requires device attestation
+  and this device did not pass; a retry on the same device will not help.
 - A callback with a wrong `state` or issuer does not end the real attempt; a duplicate
   callback returns `null`. Do not poll `restore()` during an operation.
 - On `LogoutStatus.REVOCATION_PENDING` call `signOut()` again once a connection is available.
 
-Never log incoming OAuth URLs, pending secrets or tokens. The session journal lives in
-`noBackupFilesDir`; its key stays in the AndroidKeyStore.
+Never log incoming OAuth URLs, pending secrets or tokens. The session journal and the
+record of the attested key live in `noBackupFilesDir`; their keys stay in the
+AndroidKeyStore.
 
 ## Example
 
