@@ -47,14 +47,23 @@ class LinkAuth internal constructor(
     private var closed = false
 
     companion object {
-        suspend fun create(context: Context, configJson: String, redirectUri: String): LinkAuth {
+        /** `attestation = false` turns device attestation off: no hardware key is
+         * created and token requests are not signed. Leave it on unless you have a
+         * reason; an application that requires attestation in Console then refuses
+         * the sign-in with [ErrorCode.AttestationRequired].
+         */
+        suspend fun create(context: Context, configJson: String, redirectUri: String, attestation: Boolean = true): LinkAuth {
             var created: LinkAuth? = null
             try {
                 return withContext(Dispatchers.IO) {
                     val transport = OkHttpTransport()
                     try {
-                        LinkAuth(LinkSessionClient(configJson, redirectUri, transport, KeystoreStorage(context.applicationContext)), transport)
-                            .also { created = it }
+                        val storage = KeystoreStorage(context.applicationContext)
+                        val core = if (attestation) {
+                            LinkSessionClient.withAttestation(configJson, redirectUri, transport, storage,
+                                KeystoreAttestor(context.applicationContext))
+                        } else LinkSessionClient(configJson, redirectUri, transport, storage)
+                        LinkAuth(core, transport).also { created = it }
                     } catch (e: Exception) { transport.close(); throw normalized(e) }
                 }
             } catch (e: Exception) {
