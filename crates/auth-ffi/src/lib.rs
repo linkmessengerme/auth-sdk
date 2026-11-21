@@ -547,6 +547,7 @@ pub struct UserIdentity {
     pub picture: Option<String>,
     /// `verified`, `unlocked`, `mismatch` or `none`: the server's view of this
     /// device. Absent while the application's device attestation is off.
+    #[uniffi(default = None)]
     pub device_trust: Option<String>,
 }
 

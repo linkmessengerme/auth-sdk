@@ -388,13 +388,10 @@ impl Attestation {
         else {
             return Ok(Registration::Stopped);
         };
-        if !valid_key_ref(&created.key_ref) {
-            return Ok(Registration::Stopped);
-        }
-
         // Upload. From here every failure deletes the key: its challenge is
         // spent and is part of the certificate.
-        let body = registration_body(self.config.client_id(), &challenge, &created.attestation);
+        let body = registration_body(self.config.client_id(), &challenge, &created.attestation)
+            .filter(|_| valid_key_ref(&created.key_ref));
         let timeout = remaining(deadline);
         let (Some(body), Some(timeout)) = (body, timeout) else {
             self.attestor.delete_key(&created.key_ref).await;
@@ -432,28 +429,37 @@ impl Attestation {
     }
 
     async fn save(&self, key_ref: String, key_id: String, level: String) -> Option<KeyHandle> {
-        let revision = random_secret().ok()?.expose_secret().to_owned();
-        let payload = serde_json::to_string(&Record {
-            schema: 1,
-            binding: self.name.clone(),
-            key_ref: key_ref.clone(),
-            key_id: key_id.clone(),
-            level,
-        })
-        .ok()?;
-        let entry = StoredEntry::new(revision.clone(), payload);
-        match self.store.compare_exchange(&self.name, None, Some(entry)) {
-            Ok(true) => Some(KeyHandle {
+        let entry = random_secret().ok().and_then(|revision| {
+            let payload = serde_json::to_string(&Record {
+                schema: 1,
+                binding: self.name.clone(),
+                key_ref: key_ref.clone(),
+                key_id: key_id.clone(),
+                level,
+            })
+            .ok()?;
+            Some(StoredEntry::new(
+                revision.expose_secret().to_owned(),
+                payload,
+            ))
+        });
+        let revision = entry.as_ref().map(|entry| entry.revision.clone());
+        let saved = match entry {
+            Some(entry) => self.store.compare_exchange(&self.name, None, Some(entry)),
+            None => Err(StorageError),
+        };
+        match (saved, revision) {
+            (Ok(true), Some(revision)) => Some(KeyHandle {
                 revision,
                 key_ref,
                 key_id,
             }),
             // Another instance registered first: its key is the installation's key.
-            Ok(false) => {
+            (Ok(false), _) => {
                 self.attestor.delete_key(&key_ref).await;
                 self.load()
             }
-            Err(_) => {
+            _ => {
                 self.attestor.delete_key(&key_ref).await;
                 None
             }
