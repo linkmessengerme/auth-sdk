@@ -29,6 +29,12 @@ class PackageCheckActivity : Activity() {
     suspend fun signIn(auth: LinkAuth) {
         auth.signIn(listOf("openid", "profile", "offline_access"), AndroidLinkOpener(this)).use {
             check(it.user.subject.isNotEmpty())
+            // "verified", "unlocked", "mismatch", "none", or null while attestation is off.
+            check(it.user.deviceTrust != "mismatch")
         }
+    }
+
+    suspend fun withoutAttestation(config: String) {
+        LinkAuth.create(applicationContext, config, "com.example.app://oauth/callback", attestation = false).close()
     }
 }
