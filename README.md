@@ -9,10 +9,12 @@ result on the device and keeps the session in platform secure storage.
 - Sessions survive app restarts; tokens are refreshed and rotated automatically.
 - One protocol core in Rust, with idiomatic Swift (`actor`) and Kotlin (`suspend`) APIs.
 - No secrets in the app: mobile clients are public clients and use PKCE only.
+- Device attestation: a hardware key (Android Key Attestation, Apple App Attest) signs
+  every token request, so a session cannot be moved to another device.
 - Typed errors you can branch on.
 
-> Version **0.1.0** is the first public release. Sign-in requires a current version
-> of the Link app on the same device.
+> Version **0.2.0** adds device attestation. Sign-in requires a current version of the
+> Link app on the same device.
 
 ## Packages
 
@@ -38,6 +40,7 @@ For your backend, use the server SDKs to verify ID tokens and read user data:
 3. Link returns to your registered callback with a one-time code. Your app passes the
    incoming URL to `handleCallback`.
 4. The SDK exchanges the code using PKCE, verifies the ID token and stores the session.
+   When the server asks for it, the exchange is signed by the device's attested key.
 5. Later calls such as `getIdToken()` and `getUserInfo()` reuse the session and refresh
    tokens when needed.
 
@@ -98,6 +101,54 @@ scopes that were actually granted.
 `getUserInfo()` takes no arguments. It reads fresh data with the current session, is
 never cached by the SDK and returns `phoneNumber` only while the grant is active.
 
+## Device attestation
+
+Attestation proves to Link that token requests come from your real app on a real
+device. It needs no code: the SDK does it on its own when the server asks for it.
+
+1. Before Link is opened for the first sign-in, the SDK creates a signing key in the
+   device's secure hardware and registers it with Link once: the certificate chain of
+   the key on Android, an App Attest attestation on iOS. The key stays on the device
+   for as long as the app is installed and is reused by later sign-ins.
+2. The code exchange and every token refresh are signed by this key. The session is
+   bound to it: a stolen refresh token is useless without the device.
+3. A refresh whose answer was lost in the network is repeated safely instead of ending
+   the session.
+
+The mode is set per application in Link Console:
+
+| Mode | What happens |
+|---|---|
+| Off | No key is created. The SDK works as version 0.1.0 did. |
+| Report only | Every device signs in; Console shows what the device attested. |
+| Required | A device that did not pass is refused or signs in without `phone`, as you choose in Console. |
+
+What you need to do:
+
+| | Android | iOS |
+|---|---|---|
+| In the app | Nothing | Add the **App Attest** capability in Xcode |
+| In Console | Check the SHA-256 of the app **signing** key (Play App Signing, not the upload key) | Enter your **Team ID** |
+| Attestation works from | Android 7 (API 24) | iOS 14 |
+
+The SDK still runs on Android 6 and iOS 13, in the simulator and when the hardware or
+Apple's servers are unavailable: such a device has no key, the sign-in goes on, and the
+server decides according to the mode. Nothing about attestation can fail a sign-in on
+the device by itself.
+
+In your code:
+
+- `user.deviceTrust` (`"verified"`, `"unlocked"`, `"mismatch"`, `"none"`, or absent
+  while the mode is Off) is the server's view of the device. The same value is the
+  `device_trust` claim of the ID token, so your backend can read it too.
+- `ErrorCode.AttestationRequired`: the application requires attestation and this device
+  did not pass. Show a message; retrying on the same device will not help.
+- `attestation = false` when creating `LinkAuth` turns it all off: no key is created
+  and requests are not signed. With the mode Required the sign-in is then refused.
+
+Attestation confirms the app build and the device. It does not detect a jailbroken
+iPhone or code injected into your running app.
+
 ## Sign-in with your own backend
 
 Create a one-time challenge with a random nonce on your backend, pass that nonce to
@@ -112,12 +163,19 @@ A runnable backend example lives in the
 
 - The authorization code and each refresh token are single-use. They are marked as used
   in the local journal **before** the network request, so a retry cannot replay them.
+- Only a refresh signed by the device's attested key is ever repeated, under a new
+  attempt number that the server checks; an unsigned refresh never is.
+- The server's signing keys are fetched before a code or refresh token is sent, so
+  issued tokens are never lost to a second request.
 - New tokens are handed to your code only after they are stored.
 - A callback with a wrong `state` or issuer is rejected without ending the real attempt.
 - Sign-out disables the local session first and then revokes it on the server. Without a
   connection the SDK reports a pending revocation that you retry later.
 - Tokens are kept in the Keychain (iOS) or encrypted with an AndroidKeyStore key (Android).
   Refresh tokens are never exposed to your code.
+- The attested key is created in secure hardware, can only sign, and never leaves the
+  device. It belongs to the installation, not to the signed-in person: it survives
+  sign-out and is gone when the app is uninstalled.
 - The core contains no HTTP stack, runtime, UI or file storage of its own; it calls the
   platform transport and storage adapters.
 
@@ -163,6 +221,9 @@ cargo clippy --workspace --all-targets --features bindgen --locked -- -D warning
 `cargo test` needs no network. The Swift and Kotlin smoke scripts in `scripts/`
 additionally exercise the generated bindings and the platform adapters; the native
 smoke checks start a temporary OAuth fixture on `127.0.0.1` and stop it afterwards.
+`smoke-attest-swift.sh` and `smoke-attest-kotlin.sh` run device attestation through
+that fixture with a software key. Real hardware attestation (AndroidKeyStore, App
+Attest) can only be checked on a device with the demo apps.
 
 ## License
 

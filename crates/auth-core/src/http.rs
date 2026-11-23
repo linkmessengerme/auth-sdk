@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use serde::de::DeserializeOwned;
 use zeroize::Zeroize;
 
-use crate::{AuthError, OAuthError};
+use crate::{attest::AttestReason, AuthError, OAuthError};
 
 pub const MAX_RESPONSE_BYTES: u32 = 256 * 1024;
 
@@ -94,11 +94,11 @@ pub trait HttpClient: Send + Sync {
     async fn execute(&self, request: HttpRequest) -> Result<HttpResponse, TransportError>;
 }
 
-pub(crate) async fn json<T: DeserializeOwned>(
+/// A JSON response from the address that was asked, within the size limit.
+async fn fetch(
     transport: &dyn HttpClient,
     request: HttpRequest,
-    token_endpoint: bool,
-) -> Result<T, AuthError> {
+) -> Result<HttpResponse, AuthError> {
     let expected_url = request.url.clone();
     let response = transport
         .execute(request)
@@ -116,26 +116,98 @@ pub(crate) async fn json<T: DeserializeOwned>(
     {
         return Err(AuthError::InvalidResponse);
     }
+    Ok(response)
+}
+
+pub(crate) async fn json<T: DeserializeOwned>(
+    transport: &dyn HttpClient,
+    request: HttpRequest,
+) -> Result<T, AuthError> {
+    let response = fetch(transport, request).await?;
     if response.status != 200 {
-        if token_endpoint && (400..500).contains(&response.status) {
-            #[derive(serde::Deserialize)]
-            struct ErrorBody {
-                error: String,
-            }
-            if let Ok(error) = serde_json::from_slice::<ErrorBody>(&response.body) {
-                return Err(OAuthError::parse(&error.error));
-            }
-        }
         return Err(AuthError::Http {
             status: response.status,
         });
     }
-    serde_json::from_slice(&response.body).map_err(|_| {
-        if token_endpoint {
-            AuthError::InvalidTokenResponse
-        } else {
-            AuthError::InvalidResponse
+    serde_json::from_slice(&response.body).map_err(|_| AuthError::InvalidResponse)
+}
+
+/// Why a token request did not produce tokens.
+pub(crate) struct TokenFailure {
+    pub error: AuthError,
+    /// The server's `attestation_error`, when it sent one.
+    pub reason: Option<AttestReason>,
+    /// No definite answer (network failure, an unusable response, 429, 5xx):
+    /// the request may or may not have been processed.
+    pub unanswered: bool,
+}
+
+/// POST to the token endpoint. An OAuth error body is reduced to its code and
+/// the attestation reason; descriptions never leave this function.
+pub(crate) async fn token<T: DeserializeOwned>(
+    transport: &dyn HttpClient,
+    request: HttpRequest,
+) -> Result<T, TokenFailure> {
+    let response = match fetch(transport, request).await {
+        Ok(response) => response,
+        Err(error) => {
+            return Err(TokenFailure {
+                error,
+                reason: None,
+                unanswered: true,
+            })
         }
+    };
+    if response.status == 200 {
+        return serde_json::from_slice(&response.body).map_err(|_| TokenFailure {
+            error: AuthError::InvalidTokenResponse,
+            reason: None,
+            unanswered: false,
+        });
+    }
+    #[derive(serde::Deserialize)]
+    struct ErrorBody {
+        error: String,
+        #[serde(default)]
+        attestation_error: Option<serde_json::Value>,
+    }
+    let unanswered = response.status == 429 || response.status >= 500;
+    if (400..500).contains(&response.status) {
+        if let Ok(body) = serde_json::from_slice::<ErrorBody>(&response.body) {
+            return Err(TokenFailure {
+                error: OAuthError::parse(&body.error),
+                reason: body
+                    .attestation_error
+                    .as_ref()
+                    .and_then(serde_json::Value::as_str)
+                    .map(AttestReason::parse),
+                unanswered,
+            });
+        }
+    }
+    Err(TokenFailure {
+        error: AuthError::Http {
+            status: response.status,
+        },
+        reason: None,
+        unanswered,
+    })
+}
+
+/// Status and JSON body of a request whose non-200 answers carry meaning.
+pub(crate) struct Reply {
+    pub status: u16,
+    pub body: serde_json::Value,
+}
+
+pub(crate) async fn reply(
+    transport: &dyn HttpClient,
+    request: HttpRequest,
+) -> Result<Reply, AuthError> {
+    let response = fetch(transport, request).await?;
+    Ok(Reply {
+        status: response.status,
+        body: serde_json::from_slice(&response.body).unwrap_or(serde_json::Value::Null),
     })
 }
 

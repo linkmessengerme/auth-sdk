@@ -17,7 +17,10 @@ import me.linkmessenger.auth.generated.SecureStorage
 import me.linkmessenger.auth.generated.StorageEntry
 import me.linkmessenger.auth.generated.StorageFailure
 
-/** API 23+. AES-GCM data in noBackupFilesDir; the AES key never leaves AndroidKeyStore. */
+/** API 23+. AES-GCM data in noBackupFilesDir; the AES key never leaves AndroidKeyStore.
+ * Holds the session journal (`link.auth.v1.*`) and the record of the attested
+ * key (`link.attest.v1.*`), each under its own AES key.
+ */
 class KeystoreStorage(context: Context) : SecureStorage {
     private val directory = File(context.applicationContext.noBackupFilesDir, "link-auth-v1")
     private val keys = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
@@ -68,7 +71,7 @@ class KeystoreStorage(context: Context) : SecureStorage {
 
     private fun <T> transaction(key: String, action: () -> T): T {
         try {
-            require(key.matches(Regex("link\\.auth\\.v1\\.[A-Za-z0-9_-]{43}")))
+            require(key.matches(Regex("link\\.(auth|attest)\\.v1\\.[A-Za-z0-9_-]{43}")))
             check(directory.isDirectory || directory.mkdirs())
             val path = File(directory, "$key.lock").absolutePath
             val gate = synchronized(locks) { locks.getOrPut(path) { ReentrantLock() } }

@@ -25,7 +25,7 @@ android {
         minSdk = 23
         targetSdk = 34
         versionCode = 1
-        versionName = "0.1.0-local"
+        versionName = "0.2.0-local"
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
         manifestPlaceholders["authCallbackScheme"] = applicationId!!
     }
@@ -55,7 +55,7 @@ tasks.matching { it.name == "preBuild" || it.name == "signingReport" || it.name 
     .configureEach { dependsOn(prepareDemoKey) }
 
 dependencies {
-    implementation("me.linkmessenger:link-auth:0.1.0")
+    implementation("me.linkmessenger:link-auth:0.2.0")
     implementation("androidx.activity:activity-ktx:1.9.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")

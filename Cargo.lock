@@ -1050,7 +1050,7 @@ checksum = "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981"
 
 [[package]]
 name = "link-auth-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -1059,6 +1059,7 @@ dependencies = [
  "futures",
  "getrandom 0.3.4",
  "openidconnect",
+ "p256",
  "serde",
  "serde_json",
  "sha2",
@@ -1070,7 +1071,7 @@ dependencies = [
 
 [[package]]
 name = "link-auth-ffi"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "link-auth-core",

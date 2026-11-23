@@ -57,6 +57,8 @@ pub enum AuthError {
     Internal,
     #[error("nonce must be 32 to 256 base64url characters")]
     InvalidNonce,
+    #[error("the application requires device attestation and this device did not pass")]
+    AttestationRequired,
 }
 
 #[derive(Clone, Debug, Error, PartialEq, Eq)]

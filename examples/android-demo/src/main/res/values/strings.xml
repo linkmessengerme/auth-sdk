@@ -23,7 +23,8 @@
     <string name="no_events">No events yet.</string>
     <string name="link_account">Link user</string>
     <string name="no_username">Username not provided</string>
-    <string name="profile_details">ID: %1$s\nAccess granted: %2$s\nToken valid until: %3$s</string>
+    <string name="profile_details">ID: %1$s\nAccess granted: %2$s\nToken valid until: %3$s\nDevice trust: %4$s</string>
+    <string name="device_trust_absent">not reported</string>
     <string name="status_working">Working…</string>
     <string name="status_waiting">Waiting for confirmation in Link</string>
     <string name="status_signed_in">Session saved</string>

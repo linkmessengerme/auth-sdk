@@ -39,7 +39,7 @@ Without a connected device `assembleDebug` still produces
 `build/outputs/apk/debug/link-auth-android-demo-debug.apk`. If the build cannot find
 the Android SDK, set `ANDROID_HOME` or `sdk.dir` in a local `local.properties`.
 
-`me.linkmessenger:link-auth:0.1.0` resolves **only** from the local bundle; all other
+`me.linkmessenger:link-auth:0.2.0` resolves **only** from the local bundle; all other
 dependencies come from Google Maven and Maven Central and are pinned in
 `gradle.lockfile`.
 

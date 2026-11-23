@@ -39,7 +39,7 @@ pub(crate) async fn fetch(
     request
         .headers
         .push(("Cache-Control".into(), "no-store".into()));
-    let mut info: UserInfo = http::json(transport, request, false).await?;
+    let mut info: UserInfo = http::json(transport, request).await?;
     if info.subject != session.user.subject {
         return Err(AuthError::InvalidResponse);
     }

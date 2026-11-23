@@ -6,10 +6,11 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::{
+    attest::{valid_key_id, valid_level, AttestReason, Attestation, Purpose, Signing, MAX_ATTEMPT},
     client::{random_secret, Discovery, Pending},
-    http, token, AuthClient, AuthError, AuthorizationRequest, ClientConfig, Clock, HttpClient,
-    HttpMethod, HttpRequest, SecretString, SecureStore, SignInResult, StoredEntry, SystemClock,
-    UserIdentity,
+    http, token, AuthClient, AuthError, AuthorizationRequest, ClientConfig, Clock, DeviceAttestor,
+    HttpClient, HttpMethod, HttpRequest, SecretString, SecureStore, SignInResult, StoredEntry,
+    SystemClock, UserIdentity,
 };
 
 const MAX_JOURNAL_BYTES: usize = 64 * 1024;
@@ -26,7 +27,9 @@ pub enum SessionStatus {
         expires_at: u64,
         can_refresh: bool,
     },
-    /// Also returned when a previous process died after marking a token consumed.
+    /// Also returned when a previous process died after marking a token consumed,
+    /// unless the request was signed by this installation's attested key: such a
+    /// refresh is repeated and the session stays `SignedIn`.
     ReauthenticationRequired,
     RevocationPending,
 }
@@ -50,6 +53,9 @@ pub struct SessionClient {
     clock: Arc<dyn Clock>,
     auth: AuthClient,
     key: String,
+    /// Digest of the configuration shared by the journal and the key record.
+    digest: String,
+    attestation: Option<Attestation>,
     gate: Mutex<()>,
 }
 
@@ -64,10 +70,17 @@ struct SavedSession {
     id_token: StoredSecret,
     refresh_token: Option<StoredSecret>,
     expires_at: u64,
+    /// The attested key whose proof the last accepted token request carried.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    key_id: Option<String>,
+    /// Only inside `Phase::Refreshing`: the attempt number of the signed refresh
+    /// that was sent. Present means the refresh may be repeated.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    refresh_attempt: Option<u8>,
 }
 
 impl SavedSession {
-    fn save(value: &SignInResult) -> Self {
+    fn save(value: &SignInResult, key_id: Option<String>) -> Self {
         Self {
             user: value.user.clone(),
             access_token: StoredSecret(value.access_token.duplicate()),
@@ -77,6 +90,24 @@ impl SavedSession {
                 .as_ref()
                 .map(|s| StoredSecret(s.duplicate())),
             expires_at: value.expires_at,
+            key_id,
+            refresh_attempt: None,
+        }
+    }
+
+    /// The same session as the marker of a refresh that is being sent.
+    fn marked(&self, refresh_attempt: Option<u8>) -> Self {
+        Self {
+            user: self.user.clone(),
+            access_token: StoredSecret(self.access_token.0.duplicate()),
+            id_token: StoredSecret(self.id_token.0.duplicate()),
+            refresh_token: self
+                .refresh_token
+                .as_ref()
+                .map(|s| StoredSecret(s.0.duplicate())),
+            expires_at: self.expires_at,
+            key_id: self.key_id.clone(),
+            refresh_attempt,
         }
     }
 
@@ -116,6 +147,13 @@ impl SavedSession {
                     || self.user.preferred_username.is_some()
                     || self.user.picture.is_some()))
             || self.expires_at == 0
+            || self
+                .user
+                .device_trust
+                .as_ref()
+                .is_some_and(|level| !valid_level(level))
+            || self.key_id.as_ref().is_some_and(|id| !valid_key_id(id))
+            || self.refresh_attempt.is_some_and(|n| n > MAX_ATTEMPT)
         {
             return Err(AuthError::InvalidStoredState);
         }
@@ -136,7 +174,10 @@ enum Phase {
     Pending(Pending),
     Exchanging,
     Session(SavedSession),
-    // Retained only for revocation, NEVER for another refresh or API request.
+    // The refresh token has been sent. Without `refresh_attempt` it is retained
+    // only for revocation, NEVER for another refresh or API request. With it
+    // the request was signed by the attested key, and the server lets the same
+    // key repeat it under a higher attempt number.
     Refreshing(SavedSession),
     Revoking(StoredSecret),
 }
@@ -179,7 +220,8 @@ impl SessionClient {
             digest.update((field.len() as u64).to_be_bytes());
             digest.update(field.as_bytes());
         }
-        let key = format!("link.auth.v1.{}", URL_SAFE_NO_PAD.encode(digest.finalize()));
+        let digest = URL_SAFE_NO_PAD.encode(digest.finalize());
+        let key = format!("link.auth.v1.{digest}");
         let auth = AuthClient::with_clock(config.clone(), transport.clone(), clock.clone());
         Self {
             config,
@@ -188,8 +230,24 @@ impl SessionClient {
             clock,
             auth,
             key,
+            digest,
+            attestation: None,
             gate: Mutex::new(()),
         }
+    }
+
+    /// Turn on device attestation with the platform's hardware key. Without
+    /// this call, or when the server does not advertise attestation, the client
+    /// behaves exactly as before: no key, no extra requests, no signed fields.
+    pub fn with_device_attestor(mut self, attestor: Arc<dyn DeviceAttestor>) -> Self {
+        self.attestation = Some(Attestation::new(
+            self.config.clone(),
+            self.transport.clone(),
+            self.store.clone(),
+            attestor,
+            &self.digest,
+        ));
+        self
     }
 
     /// Startup snapshot from trusted platform storage. An expired session may be
@@ -216,6 +274,14 @@ impl SessionClient {
                 }
             }
             Phase::Revoking(_) => Ok(SessionStatus::RevocationPending),
+            // An interrupted signed refresh is repeated by the next session call.
+            Phase::Refreshing(session) if session.refresh_attempt.is_some() => {
+                Ok(SessionStatus::SignedIn {
+                    user: session.user,
+                    expires_at: session.expires_at,
+                    can_refresh: true,
+                })
+            }
             Phase::Refreshing(_) | Phase::Exchanging => Ok(SessionStatus::ReauthenticationRequired),
         }
     }
@@ -244,10 +310,11 @@ impl SessionClient {
     ) -> Result<AuthorizationRequest, AuthError> {
         // An interrupted refresh still has a family handle. Revoke it before
         // creating another session. No consumed refresh is ever sent to /token.
-        if self
-            .load()?
-            .is_some_and(|e| matches!(e.state, Phase::Refreshing(_) | Phase::Revoking(_)))
-            && self.logout().await? == LogoutStatus::RevocationPending
+        if self.load()?.is_some_and(|e| match e.state {
+            Phase::Refreshing(session) => session.refresh_attempt.is_none(),
+            Phase::Revoking(_) => true,
+            _ => false,
+        }) && self.logout().await? == LogoutStatus::RevocationPending
         {
             return Err(AuthError::RevocationPending);
         }
@@ -256,6 +323,9 @@ impl SessionClient {
         if let Some(entry) = &old {
             match &entry.state {
                 Phase::Session(_) => return Err(AuthError::SessionExists),
+                Phase::Refreshing(session) if session.refresh_attempt.is_some() => {
+                    return Err(AuthError::SessionExists)
+                }
                 Phase::Pending(pending)
                     if pending.expires_at > self.clock.unix_time_seconds()? =>
                 {
@@ -280,7 +350,30 @@ impl SessionClient {
         };
         match result {
             Ok(request) => {
-                let pending = self.auth.export_pending()?;
+                let mut pending = match self.auth.export_pending() {
+                    Ok(pending) => pending,
+                    // Cancelled between discovery and here.
+                    Err(_) => {
+                        self.remove_if_current(&reservation);
+                        return Err(AuthError::Cancelled);
+                    }
+                };
+                // Register this installation's key before Link is opened. Only a
+                // client the server does not know at all stops the sign-in here.
+                if let Some((attestation, endpoints)) = self
+                    .attestation
+                    .as_ref()
+                    .zip(pending.discovery().attestation(&self.config))
+                {
+                    if let Err(error) = attestation
+                        .ensure(&endpoints, &mut pending.attest_tries, true)
+                        .await
+                    {
+                        self.auth.cancel_sign_in()?;
+                        self.remove_if_current(&reservation);
+                        return Err(error);
+                    }
+                }
                 if let Err(error) = self.cas(Some(&reservation), Some(Phase::Pending(pending))) {
                     self.auth.cancel_sign_in()?;
                     return Err(error);
@@ -304,11 +397,15 @@ impl SessionClient {
         self.auth.check_callback(callback)?;
         // This must be durable BEFORE the one-use authorization code is sent.
         let marker = self.cas(Some(&entry.revision), Some(Phase::Exchanging))?;
-        match self.auth.complete_sign_in(callback).await {
-            Ok(result) => {
+        match self
+            .auth
+            .complete_sign_in_attested(callback, self.attestation.as_ref())
+            .await
+        {
+            Ok((result, key_id)) => {
                 self.cas(
                     Some(&marker),
-                    Some(Phase::Session(SavedSession::save(&result))),
+                    Some(Phase::Session(SavedSession::save(&result, key_id))),
                 )?;
                 Ok(result)
             }
@@ -387,8 +484,14 @@ impl SessionClient {
     }
 
     async fn refresh_entry(&self, entry: Entry) -> Result<(SignInResult, String), AuthError> {
-        let Phase::Session(previous) = entry.state else {
-            return Err(AuthError::ReauthenticationRequired);
+        // `sent` is the attempt number of a signed refresh that got no answer.
+        let (previous, sent) = match entry.state {
+            Phase::Session(session) => (session, None),
+            Phase::Refreshing(session) if session.refresh_attempt.is_some() => {
+                let sent = session.refresh_attempt;
+                (session, sent)
+            }
+            _ => return Err(AuthError::ReauthenticationRequired),
         };
         let refresh = previous
             .refresh_token
@@ -398,49 +501,159 @@ impl SessionClient {
             .duplicate();
         let scopes = previous.user.granted_scopes.clone();
         let subject = previous.user.subject.clone();
-        // Safe to retry discovery: the refresh has not been consumed yet.
+        // Discovery and the signing keys come before the token is spent, so both
+        // are safe to retry and issued tokens are never lost to a later request.
         let discovery = Discovery::fetch(&self.config, self.transport.as_ref()).await?;
-        let marker = self.cas(Some(&entry.revision), Some(Phase::Refreshing(previous)))?;
-        let body = url::form_urlencoded::Serializer::new(String::new())
-            .append_pair("grant_type", "refresh_token")
-            .append_pair("client_id", self.config.client_id())
-            .append_pair("refresh_token", refresh.expose_secret())
-            .finish()
-            .into_bytes();
-        let tokens: token::TokenResponse = http::json(
-            self.transport.as_ref(),
-            HttpRequest::new(HttpMethod::Post, discovery.token_endpoint, body),
-            true,
-        )
-        .await?;
-        tokens.validate(&self.config, &scopes)?;
         let jwks = http::json(
             self.transport.as_ref(),
-            HttpRequest::new(HttpMethod::Get, discovery.jwks_uri, vec![]),
-            false,
+            HttpRequest::new(HttpMethod::Get, discovery.jwks_uri.clone(), vec![]),
         )
         .await?;
-        let result = token::verify_refresh(
-            tokens,
-            jwks,
-            &self.config,
-            &subject,
-            self.clock.unix_time_seconds()?,
-        )?;
-        if result
-            .refresh_token
+        let attested = self
+            .attestation
             .as_ref()
-            .is_some_and(|s| s.expose_secret() == refresh.expose_secret())
-        {
-            return Err(AuthError::InvalidTokenResponse);
+            .filter(|_| discovery.attestation(&self.config).is_some());
+        let key = attested.and_then(Attestation::load);
+        let attempt = sent.map_or(0, |n| n.saturating_add(1));
+        let mut proof = None;
+        if let (Some(attestation), Some(key)) = (attested, &key) {
+            if attempt <= MAX_ATTEMPT {
+                match attestation
+                    .sign(key, Purpose::Refresh, refresh.expose_secret(), attempt)
+                    .await
+                {
+                    Signing::Signed(value) => proof = Some(value),
+                    Signing::NoKey => (),
+                    // The key exists but did not answer. Nothing has been sent:
+                    // a session the server may have bound to it is left as it is.
+                    Signing::Unavailable if sent.is_some() || previous.key_id.is_some() => {
+                        return Err(AuthError::Storage)
+                    }
+                    Signing::Unavailable => (),
+                }
+            }
         }
+        if sent.is_some() && proof.is_none() {
+            // The spent token can only be repeated under the key's signature.
+            let _ = self.cas(
+                Some(&entry.revision),
+                Some(Phase::Refreshing(previous.marked(None))),
+            );
+            return Err(AuthError::ReauthenticationRequired);
+        }
+        // Durable before the request: the attempt number, when it is signed.
+        let marker = self.cas(
+            Some(&entry.revision),
+            Some(Phase::Refreshing(
+                previous.marked(proof.as_ref().map(|_| attempt)),
+            )),
+        )?;
+        let mut resigned = false;
+        let response = loop {
+            // The serializer is not Send: it must not live across an await.
+            let body = {
+                let mut form = url::form_urlencoded::Serializer::new(String::new());
+                form.append_pair("grant_type", "refresh_token")
+                    .append_pair("client_id", self.config.client_id())
+                    .append_pair("refresh_token", refresh.expose_secret());
+                if let Some(proof) = &proof {
+                    proof.append(&mut form);
+                }
+                form.finish().into_bytes()
+            };
+            let response = http::token::<token::TokenResponse>(
+                self.transport.as_ref(),
+                HttpRequest::new(HttpMethod::Post, discovery.token_endpoint.clone(), body),
+            )
+            .await;
+            // A refused proof spends nothing: sign once more, then give up.
+            if let (Err(failure), Some(attestation), Some(key), false) =
+                (&response, attested, &key, resigned)
+            {
+                if failure.reason == Some(AttestReason::ProofInvalid) && proof.is_some() {
+                    resigned = true;
+                    if let Signing::Signed(value) = attestation
+                        .sign(key, Purpose::Refresh, refresh.expose_secret(), attempt)
+                        .await
+                    {
+                        proof = Some(value);
+                        continue;
+                    }
+                }
+            }
+            break response;
+        };
+        let signed = proof.is_some();
+        let tokens = match response {
+            Ok(tokens) => tokens,
+            Err(failure) => {
+                // No answer to a signed request: the marker stays and the next
+                // call repeats the refresh under the next attempt number.
+                if signed && failure.unanswered {
+                    return Err(failure.error);
+                }
+                if let (Some(attestation), Some(key)) = (attested, &key) {
+                    if matches!(
+                        failure.reason,
+                        Some(AttestReason::KeyUnknown | AttestReason::KeyRevoked)
+                    ) {
+                        attestation.forget(key).await;
+                    }
+                }
+                self.abandon(&marker, &previous, signed);
+                return Err(if failure.reason == Some(AttestReason::Required) {
+                    AuthError::AttestationRequired
+                } else {
+                    failure.error
+                });
+            }
+        };
+        // An answer that fails verification ends the session, as before.
+        let verified = tokens.validate(&self.config, &scopes).and_then(|()| {
+            token::verify_refresh(
+                tokens,
+                jwks,
+                &self.config,
+                &subject,
+                self.clock.unix_time_seconds()?,
+            )
+        });
+        let result = match verified {
+            Ok(result)
+                if result
+                    .refresh_token
+                    .as_ref()
+                    .is_some_and(|s| s.expose_secret() == refresh.expose_secret()) =>
+            {
+                Err(AuthError::InvalidTokenResponse)
+            }
+            other => other,
+        };
+        let result = match result {
+            Ok(result) => result,
+            Err(error) => {
+                self.abandon(&marker, &previous, signed);
+                return Err(error);
+            }
+        };
         // Failure/cancellation/process death leaves the consumed marker intact.
         // Only a successful durable CAS makes new credentials available.
         let revision = self.cas(
             Some(&marker),
-            Some(Phase::Session(SavedSession::save(&result))),
+            Some(Phase::Session(SavedSession::save(
+                &result,
+                proof.map(|proof| proof.key_id),
+            ))),
         )?;
         Ok((result, revision))
+    }
+
+    /// The refresh is over and cannot be repeated: keep the marker for
+    /// revocation only. A marker of an unsigned request is already that.
+    fn abandon(&self, marker: &str, previous: &SavedSession, signed: bool) {
+        if signed {
+            let _ = self.cas(Some(marker), Some(Phase::Refreshing(previous.marked(None))));
+        }
     }
 
     /// Local invalidation is durable before network I/O and does not wait for an
@@ -512,6 +725,9 @@ impl SessionClient {
         }
         if let Phase::Session(session) | Phase::Refreshing(session) = &journal.state {
             session.validate(&self.config)?;
+        }
+        if matches!(&journal.state, Phase::Session(session) if session.refresh_attempt.is_some()) {
+            return Err(AuthError::InvalidStoredState);
         }
         if let Phase::Revoking(token) = &journal.state {
             if token.0.expose_secret().is_empty() || token.0.expose_secret().len() > 8192 {
