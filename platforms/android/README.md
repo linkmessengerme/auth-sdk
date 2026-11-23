@@ -133,21 +133,17 @@ called and no permission or manifest entry is needed.
   the TEE otherwise. No device identifiers are requested and no user confirmation is
   shown. It is created once, before Link is opened for the first sign-in, and is
   reused until the app is uninstalled; it survives sign-out.
-- Key attestation needs Android 7 (API 24). On Android 6, or when the Keystore fails,
-  there is no key: the sign-in goes on and the server decides according to the mode
-  you chose in Console (Off, Report only, Required).
+- Link requires attestation: only a verified device signs in. Key attestation needs
+  Android 7 (API 24). Android 6, the emulator, a rooted device or an unlocked
+  bootloader, and a device whose Keystore fails are refused with
+  `ErrorCode.AttestationRequired`.
 - In Console, the SHA-256 fingerprint must be that of the key your **installed** app
   is signed with. With Play App Signing that is the app signing key from Play Console,
-  not your upload key. A wrong fingerprint shows up as `deviceTrust == "mismatch"`;
-  check it in Report only mode before you switch to Required.
-- `session.user.deviceTrust` is `"verified"`, `"unlocked"` (unlocked bootloader),
-  `"mismatch"`, `"none"`, or `null` while the mode is Off.
-- `ErrorCode.AttestationRequired`: the mode is Required and this device did not pass.
-- To turn attestation off in the SDK:
-
-```kotlin
-val auth = LinkAuth.create(applicationContext, configJson, redirectUri, attestation = false)
-```
+  not your upload key. Add the fingerprint of every key your test builds are signed
+  with too: a build signed with any other key is refused.
+- `session.user.deviceTrust` is `"verified"` for every signed-in user.
+- Do not create `LinkAuth` with `attestation = false`: requests are not signed and Link
+  refuses the sign-in.
 
 With attestation, a token refresh whose answer was lost in the network is repeated on
 the next call instead of ending the session.

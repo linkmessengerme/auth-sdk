@@ -41,7 +41,7 @@ struct ContentView: View {
                         value("Identifier (sub)", session.user.subject)
                         value("Issuer", session.user.issuer)
                         value("Granted scopes", session.user.grantedScopes.sorted().joined(separator: " · "))
-                        // device_trust of the ID token; absent while attestation is off in Console.
+                        // device_trust of the ID token: "verified" for a signed-in user.
                         value("Device trust", session.user.deviceTrust ?? "not reported")
                         value("Token expires", session.expiresAt.formatted(date: .abbreviated, time: .standard))
                     }

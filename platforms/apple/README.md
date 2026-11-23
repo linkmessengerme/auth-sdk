@@ -17,27 +17,21 @@ Nothing needs to be called in code, but two things must be set up:
    `com.apple.developer.devicecheck.appattest-environment`. Xcode sets it to
    `development`; builds distributed through TestFlight and the App Store use
    `production`. Without the capability the key cannot be attested and the device
-   counts as not attested.
+   cannot sign in.
 2. **Enter your Team ID in Link Console** for the application (10 characters, shown in
    your Apple Developer account under Membership). Link compares the attestation with
-   `TeamID.bundleID`. Development builds are accepted only when "accept development
-   builds" is on for the application in Console.
+   `TeamID.bundleID`. Development builds are accepted only when development builds are
+   allowed for the application; ask Link to allow them while you test.
 
-- App Attest needs iOS 14 and a real device. On iOS 13, in the simulator, in an app
-  extension, without the capability or when Apple's servers cannot be reached there is
-  no key: the sign-in goes on and the server decides according to the mode you chose in
-  Console (Off, Report only, Required).
+- Link requires attestation: only a verified device signs in. App Attest needs iOS 14
+  and a real device. On iOS 13, in the simulator, in an app extension, without the
+  capability or when Apple's servers cannot be reached there is no key, and the sign-in
+  is refused with `ErrorCode.attestationRequired`.
 - The key is attested only at the first sign-in, never at app launch, and is reused
   until the app is uninstalled; it survives sign-out.
-- `session.user.deviceTrust` is `"verified"`, `"mismatch"`, `"none"`, or `nil` while
-  the mode is Off.
-- `ErrorCode.attestationRequired`: the mode is Required and this device did not pass.
-- To turn attestation off in the SDK:
-
-```swift
-let auth = try await LinkAuth.create(configJson: configJson, redirectUri: redirectUri,
-                                     attestation: false)
-```
+- `session.user.deviceTrust` is `"verified"` for every signed-in user.
+- Do not create `LinkAuth` with `attestation: false`: requests are not signed and Link
+  refuses the sign-in.
 
 With attestation, a token refresh whose answer was lost in the network is repeated on
 the next call instead of ending the session.

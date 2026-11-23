@@ -115,13 +115,9 @@ device. It needs no code: the SDK does it on its own when the server asks for it
 3. A refresh whose answer was lost in the network is repeated safely instead of ending
    the session.
 
-The mode is set per application in Link Console:
-
-| Mode | What happens |
-|---|---|
-| Off | No key is created. The SDK works as version 0.1.0 did. |
-| Report only | Every device signs in; Console shows what the device attested. |
-| Required | A device that did not pass is refused or signs in without `phone`, as you choose in Console. |
+Link requires attestation for every iOS and Android application: tokens are issued
+only to your genuine app on a verified device. There is no setting to turn it off or to
+let other devices through.
 
 What you need to do:
 
@@ -131,20 +127,20 @@ What you need to do:
 | In Console | Check the SHA-256 of the app **signing** key (Play App Signing, not the upload key) | Enter your **Team ID** |
 | Attestation works from | Android 7 (API 24) | iOS 14 |
 
-The SDK still runs on Android 6 and iOS 13, in the simulator and when the hardware or
-Apple's servers are unavailable: such a device has no key, the sign-in goes on, and the
-server decides according to the mode. Nothing about attestation can fail a sign-in on
-the device by itself.
+Sign-in is refused on a device that cannot be verified: Android 6 and iOS 13, the
+emulator and the simulator, a rooted or unlocked device, a build signed with a key that
+is not in Console, and a device whose secure hardware or Apple's servers fail. The SDK
+then returns `ErrorCode.AttestationRequired`.
 
 In your code:
 
-- `user.deviceTrust` (`"verified"`, `"unlocked"`, `"mismatch"`, `"none"`, or absent
-  while the mode is Off) is the server's view of the device. The same value is the
-  `device_trust` claim of the ID token, so your backend can read it too.
-- `ErrorCode.AttestationRequired`: the application requires attestation and this device
-  did not pass. Show a message; retrying on the same device will not help.
-- `attestation = false` when creating `LinkAuth` turns it all off: no key is created
-  and requests are not signed. With the mode Required the sign-in is then refused.
+- `user.deviceTrust` is the server's view of the device, `"verified"` for every signed-in
+  user of a mobile app. The same value is the `device_trust` claim of the ID token, so
+  your backend can read it too.
+- `ErrorCode.AttestationRequired`: this device did not pass. Show a message; retrying on
+  the same device will not help.
+- Do not pass `attestation = false` when creating `LinkAuth`: no key is created, requests
+  are not signed, and Link refuses the sign-in.
 
 Attestation confirms the app build and the device. It does not detect a jailbroken
 iPhone or code injected into your running app.

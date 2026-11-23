@@ -114,7 +114,7 @@ class MainActivity : ComponentActivity() {
                 user.grantedScopes.joinToString(" · "),
                 DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.MEDIUM)
                     .format(Date(session.expiresAt.toLong() * 1000)),
-                // device_trust of the ID token; absent while attestation is off in Console.
+                // device_trust of the ID token: "verified" for a signed-in user.
                 user.deviceTrust ?: getString(R.string.device_trust_absent))
         }
         checkSession.isEnabled = !state.busy && state.session != null
